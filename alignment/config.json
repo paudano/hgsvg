@@ -1,0 +1,15 @@
+{
+		"chunk":30,
+		"ref":"/net/eichler/vol2/eee_shared/assemblies/GRCh38/indexes/GRCh38.fasta",
+		"reads": "/net/eichler/vol24/projects/structural_variation/nobackups/projects/HGSVG/Alignments/HG00733/HG00733.fofn",
+		"aln_base": "chunk",
+		"dataset" : { 
+				"sample": "HG00733",
+				"pop": "PUR",
+				"aln": "BLASR",
+				"date": "20160901",
+				"dtype": "PacBio",
+				"phasing": "10X-phased"
+		},
+		"vcf": "/net/eichler/vol24/projects/structural_variation/nobackups/projects/HGSVG/analysis/HG00733/Phasing/HG00733_WGS_phased_variants.het.vcf.gz"
+}

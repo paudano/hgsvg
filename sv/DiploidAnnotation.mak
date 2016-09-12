@@ -1,5 +1,5 @@
 PBS=/net/eichler/vol5/home/mchaisso/projects/PacBioSequencing/scripts
-HGSVGS=/net/eichler/vol5/home/mchaisso/projects/HGSVG/scripts
+HGSVG=/net/eichler/vol5/home/mchaisso/projects/HGSVG/hgsvg
 BLASR=/net/eichler/vol5/home/mchaisso/software/blasr_2/cpp/alignment/bin/blasr
 REF=/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.fasta
 
@@ -12,13 +12,13 @@ all: hap_gaps/hap0/gaps.bed \
   alignments.h0.bam \
   alignments.h1.bam \
   hap_gaps/diploid/deletion/L1.bed \
-  hap_gaps/diploid/insertion/L1.bed 
+  hap_gaps/diploid/insertion/L1.bed \
 
 samfiles.fofn: samfiles/chr16.12240000-12300000.sam
 	ls samfiles | awk '{ print "samfiles/"$$1;}' > $@
 
 alignments.h0.sam: samfiles.fofn
-	$(HGSVGS)/FilterSamByHaplotype.py samfiles.fofn
+	$(HGSVG)/sv/FilterSamByHaplotype.py samfiles.fofn
 
 alignments.h0.bam: alignments.h0.sam
 	mkdir -p /var/tmp/mchaisso
@@ -57,7 +57,10 @@ hap_gaps/diploid/deletions.bed: hap_gaps/hap0/deletions.bed hap_gaps/hap1/deleti
 	bedtools intersect -v -a hap_gaps/hap0/deletions.bed -b hap_gaps/diploid/deletions.0.r.bed -r -f 1.0 > hap_gaps/diploid/deletions.h0.bed
 	bedtools intersect -v -a hap_gaps/hap1/deletions.bed -b hap_gaps/diploid/deletions.1.r.bed -r -f 1.0 > hap_gaps/diploid/deletions.h1.bed
 	cp hap_gaps/diploid/deletions.1.r.bed hap_gaps/diploid/deletions.hom.bed
-	cat hap_gaps/diploid/deletions.h0.bed hap_gaps/diploid/deletions.h1.bed hap_gaps/diploid/deletions.hom.bed > $@
+
+	cat hap_gaps/diploid/deletions.h0.bed | awk '{ print $$0"\tHAP0";}' > $@
+	cat hap_gaps/diploid/deletions.h1.bed | awk '{ print $$0"\tHAP1";}' >> $@
+	cat hap_gaps/diploid/deletions.hom.bed | awk '{ print $$0"\tHOM";}' >> $@
 #	-rm -f hap_gaps/diploid/deletions.1.r.bed 
 
 hap_gaps/diploid/insertions.bed: hap_gaps/hap0/insertions.bed hap_gaps/hap1/insertions.bed
@@ -73,8 +76,10 @@ hap_gaps/diploid/insertions.bed: hap_gaps/hap0/insertions.bed hap_gaps/hap1/inse
 	bedtools intersect -v -a hap_gaps/hap0/insertions.bed -b hap_gaps/diploid/insertions.0.r.bed -r -f 1.0 > hap_gaps/diploid/insertions.h0.bed
 	bedtools intersect -v -a hap_gaps/hap1/insertions.bed -b hap_gaps/diploid/insertions.1.r.bed -r -f 1.0 > hap_gaps/diploid/insertions.h1.bed
 	cp hap_gaps/diploid/insertions.0.r.bed hap_gaps/diploid/insertions.hom.bed
-	cat hap_gaps/diploid/insertions.h0.bed hap_gaps/diploid/insertions.h1.bed hap_gaps/diploid/insertions.hom.bed > $@
-#	-rm -f hap_gaps/diploid/insertions.1.r.bed 
+	cat hap_gaps/diploid/insertions.h0.bed  | awk '{ print $$0"\tHAP0";}' > $@
+	cat hap_gaps/diploid/insertions.h1.bed  | awk '{ print $$0"\tHAP1";}' >> $@
+	cat hap_gaps/diploid/insertions.hom.bed | awk '{ print $$0"\tHOM";}' >> $@
+
 
 
 hap_gaps/diploid/insertion/L1.bed: hap_gaps/diploid/insertions.bed

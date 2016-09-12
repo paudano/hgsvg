@@ -25,14 +25,37 @@ faiFile = open(config['ref']+".fai")
 chroms = [l.split()[0].rstrip() for l in faiFile]
 
 SNAKEMAKE_DIR = os.path.dirname(workflow.snakefile)
+
 shell.prefix(". {SNAKEMAKE_DIR}/config.sh; ")
 
 haps=[0,1]
+
 rule all:
     input:
-        asmBed   = expand("{base}.{hap}.bam.bed",base=config['alnBase'], hap=haps),
-        asmFasta = expand("{base}.{hap}.bam.fasta", base=config['alnBase'], hap=haps),
-        asmOverlaps = expand("overlaps/overlap.{hap}.{chrom}.txt", hap=haps, chrom=chroms)
+        asmBed      = expand("{base}.{hap}.bam.bed",base=config['alnBase'], hap=haps),
+        asmFasta    = expand("{base}.{hap}.bam.fasta", base=config['alnBase'], hap=haps),
+        asmOverlaps = expand("overlaps/overlap.{hap}.{chrom}.txt", hap=haps, chrom=chroms),
+        asmGraphs   = expand("overlaps/overlap.{hap}.{chrom}.txt.gml", hap=haps, chrom=chroms),
+        asmPaths    = expand("overlaps/overlap.{hap}.{chrom}.txt.path", hap=haps, chrom=chroms)
+
+rule MakeAsmPaths:
+    input:
+        asmOverlap="overlaps/overlap.{hap}.{chrom}.txt",
+        asmOverlapGraph="overlaps/overlap.{hap}.{chrom}.txt.gml"
+    output:
+        asmPath="overlaps/overlap.{hap}.{chrom}.txt.path"
+    shell:
+        "~/projects/HGSVG/hgsvg/stitching/OverlapGraphToPaths.py {input.asmOverlap} {input.asmOverlapGraph} {output.asmPath}"
+        
+rule MakeAsmGraphs:
+    input:
+        asmOverlap="overlaps/overlap.{hap}.{chrom}.txt"
+    output:
+        asmOverlapGraph="overlaps/overlap.{hap}.{chrom}.txt.gml"
+    shell:
+        "~/projects/HGSVG/hgsvg/stitching/OverlapsToGraph.py {input.asmOverlap} --out {output.asmOverlapGraph}"
+
+
 
 rule MakeAsmOverlaps:
     input:

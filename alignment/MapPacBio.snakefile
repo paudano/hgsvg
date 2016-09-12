@@ -20,6 +20,8 @@ if len(inputFiles) % chunkSize != 0:
 chunkRange = ["{:02d}".format(i) for i in list(range(1,nChunks))]
 
 alnFiles = [config['aln_base'] + "." + c + ".bam" for c in chunkRange]
+SNAKEMAKE_DIR = os.path.dirname(workflow.snakefile)
+
 
 rule all:
    input:
@@ -33,8 +35,48 @@ rule all:
                     aln=config['dataset']['aln'],
                     date=config['dataset']['date'],            
                     dtype=config['dataset']['dtype'],            
+                    phasing=config['dataset']['phasing']),
+      manifest=expand("manifest/{sample}.{pop}.{chrom}.{aln}.{date}.{dtype}.{phasing}.bam.tsv",chrom=refChrom,
+                    sample=config['dataset']['sample'],
+                    pop=config['dataset']['pop'],
+                    aln=config['dataset']['aln'],
+                    date=config['dataset']['date'],            
+                    dtype=config['dataset']['dtype'],            
                     phasing=config['dataset']['phasing'])
 
+rule MakeManifest:
+    params:
+        sample=config['dataset']['sample'],
+        pop=config['dataset']['pop'],
+        aln=config['dataset']['aln'],
+        date=config['dataset']['date'],            
+        dtype=config['dataset']['dtype'],            
+        phasing=config['dataset']['phasing'],
+        fofn=config['reads'],
+        part="/net/eichler/vol5/home/mchaisso/projects/pbgreedyphase/partitionByPhasedSNVs",
+        vcf=config['vcf'],
+        ref=config['ref'],
+        sge_opts="-pe serial 1 -l h_rt=24:00:00 -l mfree=1G -N tag"
+    input:
+        bam=expand("tagged/{sample}.{pop}.{{chrom}}.{aln}.{date}.{dtype}.{phasing}.bam{suffix}",
+                    sample=config['dataset']['sample'],
+                    pop=config['dataset']['pop'],
+                    aln=config['dataset']['aln'],
+                    date=config['dataset']['date'],            
+                    dtype=config['dataset']['dtype'],            
+                    phasing=config['dataset']['phasing'], suffix=["", ".bai"])
+    output:
+        manifest=expand("manifest/{sample}.{pop}.{{chrom}}.{aln}.{date}.{dtype}.{phasing}.bam{{suffix}}tsv",
+                    sample=config['dataset']['sample'],
+                    pop=config['dataset']['pop'],
+                    aln=config['dataset']['aln'],
+                    date=config['dataset']['date'],            
+                    dtype=config['dataset']['dtype'],            
+                    phasing=config['dataset']['phasing'])
+    shell:
+        SNAKEMAKE_DIR+"/../utils/uploading/MakeManifest.sh {input.bam} {output.manifest}"
+        
+      
 rule AddTag:
     input:
         bamFofn="alignments.txt"
@@ -103,7 +145,7 @@ rule AlignFile:
    output:
        bam="bams/{b}.{r}.bam"
    shell:
-       "mkdir -p {params.tmp}; /net/eichler/vol5/home/mchaisso/projects/blasr/cpp/alignment/bin/blasr {input.fofn} {params.ref} -out /dev/stdout -sam -nproc 12 -insertion 8 -deletion 8 -mismatch 4 -indelRate 3 -minMapQV 20 -advanceExactMatches 10 -maxMatch 25 -sdpTupleSize 13  -sdpMaxAnchorsPerPosition 20 -clipping soft | samtools view -uS - | samtools sort -@8 -m2G  - -T {params.tmp}/aln -o {output} "
+       "mkdir -p {params.tmp}; /net/eichler/vol5/home/mchaisso/projects/blasr/cpp/alignment/bin/blasr {input.fofn} {params.ref} -out /dev/stdout -sam -nproc 12 -insertion 8 -deletion 8 -mismatch 4 -indelRate 3 -minMapQV 20 -advanceExactMatches 10 -maxMatch 25 -sdpTupleSize 13  -sdpMaxAnchorsPerPosition 20 -clipping subread | samtools view -uS - | samtools sort -@8 -m2G  - -T {params.tmp}/aln -o {output} "
 
 rule MakeFofns:
    input:

@@ -38,7 +38,7 @@ nre=re.compile("^(N+)[^N]*(N+)$")
 def GetN(seq):
     m= nre.match(seq.seq.tostring())
     if m is None:
-        return (0,0)
+        return (0,len(seq.seq))
     else:
         g =m.groups()
         return (len(g[0]), len(seq.seq) - len(g[1]))
@@ -61,8 +61,3 @@ else:
     coords = [reads[0].qstart, reads[0].qend, reads[0].reference_start, reads[0].reference_end]
 
 print "{}\t{}\t{}\t".format(args.a, aNPre, aNPost) + "{}\t{}\t{}\t".format(args.b, bNPre, bNPost) +  "\t".join([str(i) for i in coords])
-
-
-
-
-

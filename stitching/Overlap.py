@@ -2,15 +2,19 @@ class Overlap:
     def __init__(self, line):
         v = line.split()
         self.a = v[0]
-        self.aRead = (int(v[1]), int(v[2]))
+        self.aRead = [int(v[1]), int(v[2])]
         self.b = v[3]
-        self.bRead = (int(v[4]), int(v[5]))
+        self.bRead = [int(v[4]), int(v[5])]
         if v[8] == "-1" or v[9] == "None":
-            self.aOvp=(0,0)
-            self.bOvp=(0,0)
+            self.aOvp=[0,0]
+            self.bOvp=[0,0]
         else:
-            self.aOvp = (int(v[6]), int(v[7]))
-            self.bOvp = (int(v[8]), int(v[9]))
+            self.aOvp = [int(v[6]), int(v[7])]
+            self.bOvp = [int(v[8]), int(v[9])]
+
+    def Print(self, file):
+        file.write("\t".join([str(i) for i in [self.a] + self.aRead + [self.b] + self.bRead + self.aOvp + self.bOvp]) + "\n")
+
 
     def HasOverlap(self):
         if self.aOvp[0] == self.aOvp[1] or self.bOvp[0] == self.bOvp[1]:
@@ -37,17 +41,21 @@ class Overlap:
         else:
             return 0
 
+    def Extends(self, wiggle=500):
+        return self.aRead[1] - self.aOvp[1] < wiggle and self.bOvp[0] - self.bRead[0] < wiggle
+
     def Contained(self, wiggle=500):
         if self.aOvp[0] - self.aRead[0] < wiggle and self.aRead[1] - self.aOvp[1] < wiggle:
             return True
         if self.bOvp[0] - self.bRead[0] < wiggle and self.bRead[1] - self.bOvp[1] < wiggle:
             return True
         return False
-        
+
 
 def ReadOverlapFile(overlapFileName):
     ovpFile = open(overlapFileName)
     return [ Overlap(line) for line in ovpFile]
+
 
 def ReadOverlapFile(overlapFileName):
     ovpFile = open(overlapFileName)
@@ -57,4 +65,3 @@ def ReadOverlapFile(overlapFileName):
 def MakeOverlapQuery(overlaps):
     query = { (ovp.a, ovp.b) : ovp for ovp in overlaps }
     return query
-

@@ -2,6 +2,7 @@
 
 import argparse
 import pysam
+import sys
 import Overlap
 import Paths
 from Bio import SeqIO
@@ -16,7 +17,7 @@ ap.add_argument("contigs", help="Write contigs here.")
 ap.add_argument("--chr", help="Process this chromosome.")
 ap.add_argument("--patchbed", help="Patch contigs into chromosome, rather than separate ones using this bed file.", default=None)
 ap.add_argument("--junction-N", help="Swap out this many bases at the junction between two contigs with N's. This can help debug joining, since misjoins will show large indels at the patch sites.",type=int, default=0, dest="junctionN")
-                
+
 args = ap.parse_args()
 
 
@@ -33,14 +34,14 @@ class SamBed:
 
 def ReadName(line):
     return line.split()[3]
-        
+
 def ReadSamBed(filename):
     samBedFile = open(filename)
     return { ReadName(line): SamBed(line) for line in samBedFile }
 
 
 def ReplaceN(s,l):
-    return s[-l:] +'N'*l
+    return s[:-l] +'N'*l
 
 
 def PatchPath(ovpQuery, asm, path):
@@ -54,12 +55,14 @@ def PatchPath(ovpQuery, asm, path):
     if edge not in ovpQuery:
         print "ERROR, did not find an overlap in the path at 0"
         sys.exit(1)
-        
+
     ovp = ovpQuery[edge]
-    seqStart = ovp.aRead[0]
-    seqEnd   = ovp.aOvp[1]
-    seq = asm.fetch(reference=ovp.a, start=seqStart, end=seqEnd)
-    # patch with N's to learn where the gap is 
+    segmentStart = ovp.aRead[0]
+    segmentEnd   = ovp.aOvp[1]
+    print "Path of length " + str(len(path))
+    print ovp.a + "\t" + str(segmentStart) + "\t" + str(segmentEnd)
+    seq = asm.fetch(reference=ovp.a, start=segmentStart, end=segmentEnd)
+    # patch with N's to learn where the gap is
     seq = ReplaceN(seq, args.junctionN)
     segments.append(seq)
     for i in range(1, len(path)-1):
@@ -67,35 +70,38 @@ def PatchPath(ovpQuery, asm, path):
         if prevOverlapEdge not in ovpQuery:
             print "ERROR, did not find an overlap that is in the path at " + str(i)
             sys.exit(0)
-            
+
         prevOverlap = ovpQuery[prevOverlapEdge]
         segmentStart = prevOverlap.bOvp[1]
         curOverlapEdge = (path[i], path[i+1])
         curOverlap = ovpQuery[curOverlapEdge]
         segmentEnd = curOverlap.aOvp[1]
-        print "start: " + str(segmentStart) + " end: " + str(segmentEnd)
-        if segmentEnd < segmentStart:
-            import pdb
-            pdb.set_trace()
+
+        sys.stdout.write( curOverlap.a + "\t " +str(segmentStart) + "\t" + str(segmentEnd))
+        if segmentStart > segmentEnd:
+            sys.stdout.write("\t***")
+        sys.stdout.write("\n")
+
         segment = asm.fetch(reference=curOverlap.a, start = segmentStart, end = segmentEnd)
         segment = ReplaceN(segment, args.junctionN)
         segments.append(segment)
 
     if len(path) > 2:
         edge = (path[-2], path[-1])
-        
+
         ovp = ovpQuery[edge]
         segmentStart = ovp.bOvp[0]
-        segmentEnd   = asm.get_reference_length(ovp.b) - ovp.bRead[1]
+        segmentEnd   = ovp.bRead[1]
+#        print curOverlap.a + "\t " +str(segmentStart) + "\t" + str(segmentEnd)
         segment = asm.fetch(reference=curOverlap.a, start = segmentStart, end = segmentEnd)
         segment = ReplaceN(segment, args.junctionN)
         segments.append(segment)
 
     contig = ''.join(segments)
-    return seq
+    return contig
 
 
-        
+
 
 overlaps = Overlap.ReadOverlapFile(args.ovp)
 asm      = pysam.FastaFile(args.asm)
@@ -112,6 +118,3 @@ for pathIndex in range(0,len(paths)):
    contigSeq = SeqRecord.SeqRecord(Seq.Seq(contig), id="stitch.{:0>3}.{}.{}".format(pathIndex, len(paths[pathIndex]), len(contig)), name="", description="")
 
    SeqIO.write(contigSeq, contigOut, "fasta")
-
-   
-    

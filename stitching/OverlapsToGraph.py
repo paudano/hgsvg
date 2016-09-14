@@ -16,7 +16,7 @@ overlaps = [ Overlap.Overlap(line) for line in overlapFile ]
 g = nx.DiGraph()
 ovpIndex = 0
 for ovp in overlaps:
-    if ovp.OverlapLength() > 0 and ovp.Contained() == False:
+    if ovp.OverlapLength() > 0 and ovp.Contained() == False and ovp.Extends(wiggle=1000) == True:
         g.add_edge(ovp.a, ovp.b, index=ovpIndex)
     ovpIndex+=1
 

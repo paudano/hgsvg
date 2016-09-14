@@ -16,6 +16,7 @@ ap.add_argument("--asm", help="Assemblies")
 ap.add_argument("--out", help="Output file.", default="/dev/stdout")
 ap.add_argument("--tmpdir", help="Use this directory for temp", default=".")
 ap.add_argument("--keep", help="Keep output file.",default=True,action='store_false')
+ap.add_argument("--blasr",  help="Specify alternative blasr", default="/net/eichler/vol5/home/mchaisso/projects/blasr/cpp/alignment/bin/blasr")
 args = ap.parse_args()
 
 
@@ -44,7 +45,7 @@ def GetN(seq):
         return (len(g[0]), len(seq.seq) - len(g[1]))
 
 
-command = "/net/eichler/vol5/home/mchaisso/projects/blasr/cpp/alignment/bin/blasr {} {} -bestn 1 -sam -out {} -clipping soft -maxMatch 25 -sdpTupleSize 13 -extend -maxExtendDropoff 50 ".format(aTempFile.name, bTempFile.name, samTempFile.name)
+command = "{} {} {} -bestn 1 -sam -out {} -clipping soft -maxMatch 25 -sdpTupleSize 13 -extend -maxExtendDropoff 50 ".format(args.blasr, aTempFile.name, bTempFile.name, samTempFile.name)
 subprocess.call(command.split())
 
 (aNPre, aNPost) = GetN(seqA)

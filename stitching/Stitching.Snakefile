@@ -44,6 +44,8 @@ rule MakeAsmPaths:
         asmOverlapGraph="overlaps/overlap.{hap}.{chrom}.txt.gml"
     output:
         asmPath="overlaps/overlap.{hap}.{chrom}.txt.path"
+    params:
+        sge_opts="-l h_rt=06:00:00 -l mfree=2G  -pe serial 1"
     shell:
         "~/projects/HGSVG/hgsvg/stitching/OverlapGraphToPaths.py {input.asmOverlap} {input.asmOverlapGraph} {output.asmPath}"
         
@@ -52,6 +54,8 @@ rule MakeAsmGraphs:
         asmOverlap="overlaps/overlap.{hap}.{chrom}.txt"
     output:
         asmOverlapGraph="overlaps/overlap.{hap}.{chrom}.txt.gml"
+    params:
+        sge_opts="-l h_rt=06:00:00 -l mfree=2G  -pe serial 1"
     shell:
         "~/projects/HGSVG/hgsvg/stitching/OverlapsToGraph.py {input.asmOverlap} --out {output.asmOverlapGraph}"
 
@@ -66,13 +70,15 @@ rule MakeAsmOverlaps:
     params:
         sge_opts="-l mfree=1G -pe serial 12 -l h_rt=24:00:00 -N ovp"
     shell:
-        "mkdir -p " + TMPDIR + "; mkdir -p overlaps; /net/eichler/vol5/home/mchaisso/projects/HGSVG/scripts/StitchingContigs/OverlapContigsOrderedByBed.py {input.asmBed} {input.asm} --chrom {wildcards.chrom} --out {output.asmOverlap} --nproc 12 --tmpdir " + TMPDIR
+        "mkdir -p " + TMPDIR + "; mkdir -p overlaps; /net/eichler/vol5/home/mchaisso/projects/HGSVG/scripts/StitchingContigs/OverlapContigsOrderedByBed.py {input.asmBed} {input.asm} --chrom {wildcards.chrom} --out {output.asmOverlap} --nproc 12 --tmpdir " + TMPDIR + " --blasr " + config['blasr']
     
 rule MakeAsmBed:
     input:
         asmBam = "alignments.{hap}.bam"
     output:
         asmBed = "alignments.{hap}.bam.bed"
+    params:
+        sge_opts="-l h_rt=06:00:00 -l mfree=2G  -pe serial 1"
     shell:
         "samtools view {input.asmBam} | samToBed /dev/stdin --reportIdentity > {output.asmBed}"
 
@@ -81,6 +87,8 @@ rule MakeAsmFasta:
         asmBam = "alignments.h{hap}.bam"
     output:
         asmFasta = "alignments.{hap}.bam.fasta"
+    params:
+        sge_opts="-l h_rt=06:00:00 -l mfree=2G  -pe serial 1"
     shell:
         "samtools view {input.asmBam} | awk '{{ print \">\"$1; print $10;}}' | fold | sed '/^$/d' > {output.asmFasta}; samtools faidx {output.asmFasta}"
 

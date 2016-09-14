@@ -36,15 +36,16 @@ rule all:
                     date=config['dataset']['date'],            
                     dtype=config['dataset']['dtype'],            
                     phasing=config['dataset']['phasing']),
-      manifest=expand("manifest/{sample}.{pop}.{chrom}.{aln}.{date}.{dtype}.{phasing}.bam.tsv",chrom=refChrom,
-                    sample=config['dataset']['sample'],
-                    pop=config['dataset']['pop'],
-                    aln=config['dataset']['aln'],
-                    date=config['dataset']['date'],            
-                    dtype=config['dataset']['dtype'],            
-                    phasing=config['dataset']['phasing'])
+      manifest=expand("manifest/{sample}.{pop}.{chrom}.{aln}.{date}.{dtype}.{phasing}.bam{suffix}.manifest.tsv",chrom=refChrom,
+                      sample=config['dataset']['sample'],
+                      pop=config['dataset']['pop'],
+                      aln=config['dataset']['aln'],
+                      date=config['dataset']['date'],            
+                      dtype=config['dataset']['dtype'],            
+                      phasing=config['dataset']['phasing'],
+                      suffix=["",".bai"])
 
-rule MakeManifest:
+rule MakeBamManifest:
     params:
         sample=config['dataset']['sample'],
         pop=config['dataset']['pop'],
@@ -56,23 +57,12 @@ rule MakeManifest:
         part="/net/eichler/vol5/home/mchaisso/projects/pbgreedyphase/partitionByPhasedSNVs",
         vcf=config['vcf'],
         ref=config['ref'],
-        sge_opts="-pe serial 1 -l h_rt=24:00:00 -l mfree=1G -N tag"
+        sge_opts="-pe serial 1 -l h_rt=24:00:00 -l mfree=1G -N man"
     input:
-        bam=expand("tagged/{sample}.{pop}.{{chrom}}.{aln}.{date}.{dtype}.{phasing}.bam{suffix}",
-                    sample=config['dataset']['sample'],
-                    pop=config['dataset']['pop'],
-                    aln=config['dataset']['aln'],
-                    date=config['dataset']['date'],            
-                    dtype=config['dataset']['dtype'],            
-                    phasing=config['dataset']['phasing'], suffix=["", ".bai"])
+        bam="manifest/"+config['dataset']['sample'] + "." + config['dataset']['pop'] +".{chrom}." + config['dataset']['aln']+"." + config['dataset']['date'] + "." + config['dataset']['dtype'] + "." + config['dataset']['phasing'] + ".{suffix}"
+
     output:
-        manifest=expand("manifest/{sample}.{pop}.{{chrom}}.{aln}.{date}.{dtype}.{phasing}.bam{{suffix}}tsv",
-                    sample=config['dataset']['sample'],
-                    pop=config['dataset']['pop'],
-                    aln=config['dataset']['aln'],
-                    date=config['dataset']['date'],            
-                    dtype=config['dataset']['dtype'],            
-                    phasing=config['dataset']['phasing'])
+        manifest="manifest/"+config['dataset']['sample'] + "." + config['dataset']['pop'] +".{chrom}." + config['dataset']['aln']+"." + config['dataset']['date'] + "." + config['dataset']['dtype'] + "." + config['dataset']['phasing'] + ".{suffix}.manifest.tsv"
     shell:
         SNAKEMAKE_DIR+"/../utils/uploading/MakeManifest.sh {input.bam} {output.manifest}"
         

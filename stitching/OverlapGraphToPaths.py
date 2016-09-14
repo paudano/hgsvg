@@ -13,23 +13,29 @@ ap.add_argument("--tgraph", help="Graph with transitive edge removal", default=N
 args = ap.parse_args()
 
 
-def OrderDestByOverlap(n,g,o):
+def OrderDestByOverlap(n,g,o, extend=False):
     adj = []
     for dest in g[n]:
-        dist = o[g.edge[n][dest]['index']].DistanceToStart()
+        ovp = o[g.edge[n][dest]['index']]
+        if extend == True and ovp.Extends(wiggle=2000) == False:
+            continue
+        dist = ovp.DistanceToStart()
         if dist != -1:
             adj.append((dist, dest))
     return sorted(adj)
 
 def RemoveTips(g,l):
+
+
     nTips = 0
+    toRemove = []
     for n in g.nodes():
         if g.in_degree(n) == 0 or g.out_degree(n) == 0:
             # Found a source or sink
             src = n
             srcLen = 0
             srcOut = n
-            while g.in_degree(src) == 1 and srcLen <= l:
+            while g.in_degree(src) == 1 and g.out_degree(src) <= 1 and srcLen <= l:
                 srcOut = src
                 src = g.in_edges(src)[0]
                 srcLen += 1
@@ -37,28 +43,29 @@ def RemoveTips(g,l):
             dest = n
             destLen = 0
             destOut = n
-            while g.out_degree(dest) == 1 and destLen + srcLen <= l:
+            while g.out_degree(dest) == 1 and g.in_degree(dest) <= 1 and destLen + srcLen <= l:
                 destOut = dest
-                dest = g[dest].keys()[0]
+                dest    = g[dest].keys()[0]
                 destLen += 1
-            toRemove = []
+
             if srcLen + destLen <= l:
                 # Found a tip, remove the path from the src node to the
                 # end of the dest
                 if srcOut != src:
-                    toRemove.append((src, srcOut))
+                    toRemove.append(srcOut)
                     while srcOut != n:
+                        toRemove.append(srcOut)
                         src = srcOut
                         srcOut = g.in_edges(src)[0]
-                        toRemove.append((src,srcOut))
+
                 dest = n
-                while g.out_degree(dest) == 1:
+                while g.out_degree(dest) == 1 and g.in_degree(dest) <= 1:
+                    toRemove.append(n)
                     destOut = g[dest].keys()[0]
-                    toRemove.append((dest, destOut))
                     dest = destOut
-                nTips += len(toRemove)
-                g.remove_edges_from(toRemove)
-    print "removed " + str(nTips) + " tips"
+
+    g.remove_nodes_from(toRemove)
+    print "removed " + str(len(toRemove)) + " tips"
     return nTips
 
 def SoleOut(g,n):
@@ -114,6 +121,32 @@ def RemoveSimpleBulges(g, maxBulgeLength):
         print str(paths[0])
         print str(paths[1])
 
+def GreedyPath(g,n,o):
+    path = [n]
+    while len(g[n].keys()) > 0 and g.node[n]['visited'] == False:
+        g.node[n]['visited'] = True
+        adj = OrderDestByOverlap(n, g, o, extend=True)
+        if len(adj) == 0:
+            break
+
+        n = adj[0][1]
+        path.append(n)
+    # Mark last node as visited
+    g.node[n]['visited'] = True
+
+    print len(path)
+    return path
+
+def GreedyPaths(g, o):
+    nx.set_node_attributes(g, 'visited', {n: False for n in g.nodes()})
+    srcNodes = GetSourceNodes(g)
+    paths = [GreedyPath(g,n,o) for n in srcNodes]
+    for n in g.nodes():
+        if 'visited' in g.node[n]:
+            del g.node[n]['visited']
+
+    return paths
+
 def LinearPaths(g):
     srcNodes = GetSourceNodes(g)
     nx.set_node_attributes(g, 'visited', {n: False for n in g.nodes()})
@@ -144,6 +177,7 @@ def LinearPaths(g):
                     break
 
 
+
             #
             # First case, the search ended at a branching node
             #
@@ -170,15 +204,24 @@ def RemoveTransitiveEdges(g, o):
     # o - overlaps, indexed by g[node]['index']
     #
     transitive = []
-    for n in g.nodes():
+    nThird = 0
+    nFourth = 0
+    for n in nx.topological_sort(g):
         inPlay = { dest for dest in g[n].keys() }
         adj = OrderDestByOverlap(n, g, o)
         for (dist, neighbor) in adj:
             for second in g[neighbor].keys():
                 if second in inPlay:
                     transitive.append((n,second))
+                for third in g[second].keys():
+                    if third in inPlay:
+                        transitive.append((n,third))
+                        nThird+=1
+                    for fourth in g[third].keys():
+                        if fourth in inPlay:
+                            transitive.append((n,fourth))
+                            nFourth+=1
     g.remove_edges_from(transitive)
-    print "removed " + str(len(transitive)) + " edges"
 
 g = nx.read_gml(args.graph)
 overlapFile = open(args.ovp)
@@ -187,7 +230,7 @@ overlaps = [Overlap.Overlap(line) for line in overlapFile]
 
 RemoveTransitiveEdges(g, overlaps)
 RemoveTips(g,1)
-paths = LinearPaths(g)
+paths = GreedyPaths(g, overlaps)
 for p in paths:
     pathFile.write("\t".join(p) + "\n")
 

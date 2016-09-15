@@ -41,7 +41,10 @@ def ReadSamBed(filename):
 
 
 def ReplaceN(s,l):
-    return s[:-l] +'N'*l
+    if l==0:
+        return s
+    else:
+        return s[0:-l] +'N'*l
 
 
 def PatchPath(ovpQuery, asm, path):
@@ -54,13 +57,13 @@ def PatchPath(ovpQuery, asm, path):
     segments = []
     if edge not in ovpQuery:
         print "ERROR, did not find an overlap in the path at 0"
-        sys.exit(1)
+        sys.exit(0)
 
     ovp = ovpQuery[edge]
     segmentStart = ovp.aRead[0]
     segmentEnd   = ovp.aOvp[1]
     print "Path of length " + str(len(path))
-    print ovp.a + "\t" + str(segmentStart) + "\t" + str(segmentEnd)
+#    print ovp.a + "\t" + str(segmentStart) + "\t" + str(segmentEnd)
     seq = asm.fetch(reference=ovp.a, start=segmentStart, end=segmentEnd)
     # patch with N's to learn where the gap is
     seq = ReplaceN(seq, args.junctionN)
@@ -77,10 +80,10 @@ def PatchPath(ovpQuery, asm, path):
         curOverlap = ovpQuery[curOverlapEdge]
         segmentEnd = curOverlap.aOvp[1]
 
-        sys.stdout.write( curOverlap.a + "\t " +str(segmentStart) + "\t" + str(segmentEnd))
         if segmentStart > segmentEnd:
+            sys.stdout.write( curOverlap.a + "\t " +str(segmentStart) + "\t" + str(segmentEnd))
             sys.stdout.write("\t***")
-        sys.stdout.write("\n")
+            sys.stdout.write("\n")
 
         segment = asm.fetch(reference=curOverlap.a, start = segmentStart, end = segmentEnd)
         segment = ReplaceN(segment, args.junctionN)
@@ -92,7 +95,6 @@ def PatchPath(ovpQuery, asm, path):
         ovp = ovpQuery[edge]
         segmentStart = ovp.bOvp[0]
         segmentEnd   = ovp.bRead[1]
-#        print curOverlap.a + "\t " +str(segmentStart) + "\t" + str(segmentEnd)
         segment = asm.fetch(reference=curOverlap.a, start = segmentStart, end = segmentEnd)
         segment = ReplaceN(segment, args.junctionN)
         segments.append(segment)

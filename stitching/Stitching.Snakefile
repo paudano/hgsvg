@@ -36,7 +36,20 @@ rule all:
         asmFasta    = expand("{base}.{hap}.bam.fasta", base=config['alnBase'], hap=haps),
         asmOverlaps = expand("overlaps/overlap.{hap}.{chrom}.txt", hap=haps, chrom=chroms),
         asmGraphs   = expand("overlaps/overlap.{hap}.{chrom}.txt.gml", hap=haps, chrom=chroms),
-        asmPaths    = expand("overlaps/overlap.{hap}.{chrom}.txt.path", hap=haps, chrom=chroms)
+        asmPaths    = expand("overlaps/overlap.{hap}.{chrom}.txt.path", hap=haps, chrom=chroms),
+        asmContigs  = expand("contigs/patched.{hap}.{chrom}.fasta", hap=haps, chrom=chroms)
+
+rule MakeAsmContigs:
+    input:
+        asmPath="overlaps/overlap.{hap}.{chrom}.txt.path",
+        asmOverlap="overlaps/overlap.{hap}.{chrom}.txt",
+        asmFasta="alignments.{hap}.bam.fasta"
+    output:
+        asmContig="contigs/patched.{hap}.{chrom}.fasta"
+    params:
+        sge_opts=" -l h_rt=01:00:00 -l mfree=4G -pe serial 1"
+    shell:
+        "~/projects/HGSVG/hgsvg/stitching/PatchPaths.py {input.asmOverlap} {input.asmFasta} {input.asmPath} {output.asmContig}"
 
 rule MakeAsmPaths:
     input:
@@ -47,7 +60,7 @@ rule MakeAsmPaths:
     params:
         sge_opts="-l h_rt=06:00:00 -l mfree=2G  -pe serial 1"
     shell:
-        "~/projects/HGSVG/hgsvg/stitching/OverlapGraphToPaths.py {input.asmOverlap} {input.asmOverlapGraph} {output.asmPath}"
+        "~/projects/HGSVG/hgsvg/stitching/OverlapGraphToPaths.py {input.asmOverlap} {input.asmOverlapGraph} {output.asmPath} "
         
 rule MakeAsmGraphs:
     input:
@@ -68,9 +81,9 @@ rule MakeAsmOverlaps:
     output:
         asmOverlap="overlaps/overlap.{hap}.{chrom}.txt"
     params:
-        sge_opts="-l mfree=1G -pe serial 12 -l h_rt=24:00:00 -N ovp"
+        sge_opts="-l mfree=1G -pe serial 12 -l h_rt=72:00:00 -N ovp"
     shell:
-        "mkdir -p " + TMPDIR + "; mkdir -p overlaps; /net/eichler/vol5/home/mchaisso/projects/HGSVG/scripts/StitchingContigs/OverlapContigsOrderedByBed.py {input.asmBed} {input.asm} --chrom {wildcards.chrom} --out {output.asmOverlap} --nproc 12 --tmpdir " + TMPDIR + " --blasr " + config['blasr']
+        "mkdir -p " + TMPDIR + "; mkdir -p overlaps; /net/eichler/vol5/home/mchaisso/projects/HGSVG/hgsvg/stitching/OverlapContigsOrderedByBed.py {input.asmBed} {input.asm} --chrom {wildcards.chrom} --out {output.asmOverlap} --nproc 12 --tmpdir " + TMPDIR + " --blasr " + config['blasr']
     
 rule MakeAsmBed:
     input:

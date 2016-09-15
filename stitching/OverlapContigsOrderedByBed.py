@@ -9,11 +9,12 @@ ap = argparse.ArgumentParser(description="Given an alignmetn bed file, run overl
 ap.add_argument("bed", help="Alignment bed file.")
 ap.add_argument("asm", help="Assemblies file")
 ap.add_argument("--chrom", help="Process this chromosome only", default =None)
-ap.add_argument("--path", help="Path to HGSVG stitching scripts", default="/net/eichler/vol5/home/mchaisso/projects/HGSVG/scripts/StitchingContigs/")
+ap.add_argument("--path", help="Path to HGSVG stitching scripts", default="/net/eichler/vol5/home/mchaisso/projects/HGSVG/hgsvg/stitching")
 ap.add_argument("--ahead", help="Allow overlap betewen alignemnts ending this far ahead of current.", type=int, default=20000)
 ap.add_argument("--out", help="Output file.", default="/dev/stdout")
 ap.add_argument("--nproc", help="Number of processors", default=1,type=int)
 ap.add_argument("--tmpdir", help="Pass along tempdir", default=".")
+ap.add_argument("--blasr", help="Blasr command to run", default=None)
 args = ap.parse_args()
 
 def ParseBedLine(line):
@@ -29,14 +30,18 @@ commands = []
 def Run(command):
     res = subprocess.check_output(command.split())
     return res.rstrip()
-
+if args.blasr is not None:
+    blasrCommand = " --blasr " + args.blasr
+else:
+    blasrCommand = ""
 for i in range(0,len(alignments)-1):
     if args.chrom is not None and alignments[i][0] != args.chrom:
         continue
     j = i+1
     
     while j < len(alignments) and alignments[j][0] == alignments[i][0]  and  alignments[j][1] < alignments[i][2]+args.ahead:
-        commands.append( "{}OverlapTwoContigs.py --a {} --b {} --asm {} --tmpdir {} ".format(args.path, alignments[i][3], alignments[j][3], args.asm, args.tmpdir))
+        commands.append( "{}/OverlapTwoContigs.py --a {} --b {} --asm {} --tmpdir {} {}".format(args.path, alignments[i][3], alignments[j][3], args.asm, args.tmpdir, blasrCommand))
+	sys.stderr.write(commands[-1] + "\n")
         j+=1
     i+=1
 

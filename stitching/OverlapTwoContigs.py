@@ -33,7 +33,7 @@ GetSeq(args.b, args.asm, bTempFile)
 
 seqA = SeqIO.read(open(aTempFile.name), "fasta")
 seqB = SeqIO.read(open(bTempFile.name), "fasta")
-nre=re.compile("^(N+)[^N]*(N+)$")
+nre=re.compile("^(N*)[^N]*(N*)$")
 
 
 def GetN(seq):

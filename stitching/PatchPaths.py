@@ -81,7 +81,7 @@ def PatchPath(ovpQuery, asm, path):
         segmentEnd = curOverlap.aOvp[1]
 
         if segmentStart > segmentEnd:
-            sys.stdout.write( curOverlap.a + "\t " +str(segmentStart) + "\t" + str(segmentEnd))
+            sys.stdout.write( curOverlap.a + "\t " +str(segmentStart) + "\t" + str(segmentEnd) + "\t" + curOverlap.b)
             sys.stdout.write("\t***")
             sys.stdout.write("\n")
 

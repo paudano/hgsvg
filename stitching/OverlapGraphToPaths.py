@@ -121,20 +121,43 @@ def RemoveSimpleBulges(g, maxBulgeLength):
         print str(paths[0])
         print str(paths[1])
 
+
 def GreedyPath(g,n,o):
     path = [n]
+    prevEdge = None
+    curEdge  = None
+    prevOverlap = None
     while len(g[n].keys()) > 0 and g.node[n]['visited'] == False:
         g.node[n]['visited'] = True
         adj = OrderDestByOverlap(n, g, o, extend=True)
         if len(adj) == 0:
             break
 
-        n = adj[0][1]
-        path.append(n)
+
+        foundOverlap = False
+        if prevOverlap is not None:
+            for i in range(0,len(adj)):
+
+                curOverlap = o[g.edge[n][adj[i][1]]['index']]
+                points = Overlap.GetOverlapPoints(prevOverlap, curOverlap)
+                if points[0] < points[1]:
+                    n = adj[i][1]
+                    foundOverlap = True
+                    break
+        else:
+            curOverlap = o[g.edge[n][adj[0][1]]['index']]
+            n = adj[0][1]
+            foundOverlap = True
+        if foundOverlap == True:
+            path.append(n)
+        else:
+            print "ending search " + str(len(adj))
+        prevOverlap = curOverlap
+
     # Mark last node as visited
     g.node[n]['visited'] = True
 
-    print len(path)
+    print "Path length: " + str(len(path)) + " Ended at: " + path[-1]
     return path
 
 def GreedyPaths(g, o):

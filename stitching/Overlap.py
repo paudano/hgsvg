@@ -12,9 +12,14 @@ class Overlap:
             self.aOvp = [int(v[6]), int(v[7])]
             self.bOvp = [int(v[8]), int(v[9])]
 
+    def BLength(self):
+        return self.bRead[1]-self.bRead[0]
+
+    def ALength(self):
+        return self.aRead[1]-self.aRead[0]
+
     def Print(self, file):
         file.write("\t".join([str(i) for i in [self.a] + self.aRead + [self.b] + self.bRead + self.aOvp + self.bOvp]) + "\n")
-
 
     def HasOverlap(self):
         if self.aOvp[0] == self.aOvp[1] or self.bOvp[0] == self.bOvp[1]:
@@ -65,3 +70,9 @@ def ReadOverlapFile(overlapFileName):
 def MakeOverlapQuery(overlaps):
     query = { (ovp.a, ovp.b) : ovp for ovp in overlaps }
     return query
+
+
+def GetOverlapPoints(first, second):
+    segmentStart = first.bOvp[1]
+    segmentEnd = second.aOvp[1]
+    return (segmentStart, segmentEnd)

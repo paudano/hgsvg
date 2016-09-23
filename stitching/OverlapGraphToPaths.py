@@ -121,8 +121,29 @@ def RemoveSimpleBulges(g, maxBulgeLength):
         print str(paths[0])
         print str(paths[1])
 
+def DFSOverlaps(g,n,o,c,d, prevOverlap=None):
+    adj = OrderDestByOverlap(n, g, o, extend=True)
+    if len(adj) == 0:
+        return (c, n)
+    depths = [0]*len(adj)
+    dest   = [None]*len(adj)
+    for i in range(0,len(adj)):
+        curOverlap = o[g.edge[n][adj[i][1]]['index']]
+        points = Overlap.GetOverlapPoints(prevOverlap, curOverlap)
+        if points[0] < points[1]:
+            if d > 1:
+                (depths[i], tempMaxDest) = DFSOverlaps(g,adj[i][1],o,c+1,d-1, curOverlap)
+                dest[i] = adj[i][1]
+            else:
+                depths[i] = c+1
+    maxDepth = max(depths)
+    maxI =   depths.index(maxDepth)
+    maxDest = dest[maxI]
+    return (maxDepth, maxDest)
+
 
 def GreedyPath(g,n,o):
+    source = n
     path = [n]
     prevEdge = None
     curEdge  = None
@@ -136,14 +157,12 @@ def GreedyPath(g,n,o):
 
         foundOverlap = False
         if prevOverlap is not None:
-            for i in range(0,len(adj)):
-
-                curOverlap = o[g.edge[n][adj[i][1]]['index']]
-                points = Overlap.GetOverlapPoints(prevOverlap, curOverlap)
-                if points[0] < points[1]:
-                    n = adj[i][1]
-                    foundOverlap = True
-                    break
+            # Search 4 nodes ahead for maximum path.
+            (depth, dest) = DFSOverlaps(g,n,o,0,4, prevOverlap)
+            if dest is not None:
+                curOverlap = o[g.edge[n][dest]['index']]
+                foundOverlap = True
+                n = dest
         else:
             curOverlap = o[g.edge[n][adj[0][1]]['index']]
             n = adj[0][1]
@@ -153,7 +172,7 @@ def GreedyPath(g,n,o):
         else:
             print "ending search " + str(len(adj))
         prevOverlap = curOverlap
-
+    path.append(n)
     # Mark last node as visited
     g.node[n]['visited'] = True
 

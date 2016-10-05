@@ -148,6 +148,7 @@ def GreedyPath(g,n,o):
     prevEdge = None
     curEdge  = None
     prevOverlap = None
+    foundOverlap = False
     while len(g[n].keys()) > 0 and g.node[n]['visited'] == False:
         g.node[n]['visited'] = True
         adj = OrderDestByOverlap(n, g, o, extend=True)
@@ -169,10 +170,12 @@ def GreedyPath(g,n,o):
             foundOverlap = True
         if foundOverlap == True:
             path.append(n)
+	    foundOverlap = False
         else:
             print "ending search " + str(len(adj))
         prevOverlap = curOverlap
-    path.append(n)
+    if foundOverlap == True:
+        path.append(n)
     # Mark last node as visited
     g.node[n]['visited'] = True
 

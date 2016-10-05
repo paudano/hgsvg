@@ -37,7 +37,80 @@ rule all:
         asmOverlaps = expand("overlaps/overlap.{hap}.{chrom}.txt", hap=haps, chrom=chroms),
         asmGraphs   = expand("overlaps/overlap.{hap}.{chrom}.txt.gml", hap=haps, chrom=chroms),
         asmPaths    = expand("overlaps/overlap.{hap}.{chrom}.txt.path", hap=haps, chrom=chroms),
-        asmContigs  = expand("contigs/patched.{hap}.{chrom}.fasta", hap=haps, chrom=chroms)
+        asmContigs  = expand("contigs/patched.{hap}.{chrom}.fasta", hap=haps, chrom=chroms),
+	chrFasta    = expand("contigs.{hap}.fasta", hap=haps),
+	chrAln      = expand("contigs.{hap}.fasta.sam", hap=haps),
+        chrBed      = expand("contigs.{hap}.fasta.sam.bed", hap=haps),
+	chrBed6     = expand("contigs.{hap}.fasta.sam.bed6", hap=haps),
+	chrBB       = expand("contigs.{hap}.fasta.sam.bb", hap=haps),
+        annotation  = "stitching_hap_gaps/diploid/insertions.bed"
+        
+
+
+rule MakeAnnotation:
+    input:
+        asmSam=expand("contigs.{hap}.fasta.sam",hap=haps)
+    output:
+        annotation="stitching_hap_gaps/diploid/insertions.bed"
+    params:
+        sge_opts="-l mfree=1G -pe serial 4 -l h_rt=24:00:00"
+    shell:
+        "make -f " + SNAKEMAKE_DIR + "/DiploidAnnotation.mak H0SAM=contigs.0.fasta.sam H1SAM=contigs.1.fasta.sam DIR=stitching_hap_gaps -j 2"
+    
+rule MakeChrAsmFasta:
+    input:
+        asmContig=expand("contigs/patched.{{hap}}.{chrom}.fasta", chrom=chroms)
+    output:
+        asmFasta="contigs.{hap}.fasta"
+    params:
+        sge_opts="-l mfree=1G -pe serial 1 -l h_rt=01:00:00"
+    shell:
+        "cat {input.asmContig} > {output.asmFasta}"
+
+rule MakeAsmAln:
+    input:
+        asmFasta="contigs.{hap}.fasta"
+    output:
+        asmSam="contigs.{hap}.fasta.sam"
+    params:
+        sge_opts="-l mfree=15G -pe serial 4 -l h_rt=04:00:00",
+    	ref=config['ref']
+    shell:
+        "blasr {input.asmFasta} {params.ref} -alignContigs -sam -minMapQV 30 -out {output.asmSam} -piecewise -nproc 4"
+
+rule MakeChrAsmBed:
+    input:
+        asmSam="contigs.{hap}.fasta.sam"
+    output:
+        asmBed="contigs.{hap}.fasta.sam.bed"
+    params:
+        sge_opts="-l mfree=1G -pe serial 1 -l h_rt=01:00:00",
+        hgsvg=SNAKEMAKE_DIR+ "/.."
+    shell:
+        "/net/eichler/vol5/home/mchaisso/projects/mcutils/bin/samToBed {input.asmSam} --reportIdentity | bedtools sort > {output.asmBed}"
+
+rule MakeChrAsmBed6:
+    input:
+        asmBed="contigs.{hap}.fasta.sam.bed"
+    output:
+        asmBed6="contigs.{hap}.fasta.sam.bed6"
+    params:
+        sge_opts="-l mfree=1G -pe serial 1 -l h_rt=01:00:00",
+	hgsvg=SNAKEMAKE_DIR+ "/.."
+    shell:
+        "{params.hgsvg}/utils/tracks/SamBedToBed6.py {input.asmBed} {output.asmBed6} "
+
+rule MakeAsmBB:
+    input:
+        asmBed="contigs.{hap}.fasta.sam.bed6"
+    output:
+        asmBB="contigs.{hap}.fasta.sam.bb"
+    params:
+        sge_opts="-l h_rt=01:00:00 -l mfree=1G -pe serial 1",
+        ref=config['ref']
+    shell:
+        "module load uccc  && bedToBigBed {input.asmBed} {params.ref}.fai {output.asmBB} -type=bed6"
+
 
 rule MakeAsmContigs:
     input:
@@ -58,7 +131,7 @@ rule MakeAsmPaths:
     output:
         asmPath="overlaps/overlap.{hap}.{chrom}.txt.path"
     params:
-        sge_opts="-l h_rt=06:00:00 -l mfree=2G  -pe serial 1"
+        sge_opts="-l h_rt=06:00:00 -l mfree=3G  -pe serial 1"
     shell:
         "~/projects/HGSVG/hgsvg/stitching/OverlapGraphToPaths.py {input.asmOverlap} {input.asmOverlapGraph} {output.asmPath} "
         

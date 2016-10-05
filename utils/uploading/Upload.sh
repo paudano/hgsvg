@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 module load aspera/latest
+if [ "$#" -lt 1 ]; then
+  echo "Usage: Upload.sh file1 [file2 file3 ...]"
+  exit 1
+fi
+
 export ASPERA_SCP_PASS=3fnMsgrU
 while test $# -gt 0; 
  do 

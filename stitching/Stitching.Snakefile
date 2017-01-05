@@ -189,13 +189,13 @@ rule merge_local_assemblies_into_chromosomes:
     input: "local_assemblies_for_genotyping.fasta", "tiling_path_in_contigs.bed"
     output: fasta="merged_local_assemblies_for_genotyping.fasta", psl="contigs_to_merged_assemblies.psl"
     params: sge_opts="-l h_rt=00:15:00"
-    shell: "python ~jlhudd/fasta_tools/merge_assemblies_by_tiling_path.py --gap_size=5000 {input} {output.fasta} _merged > {output.psl}"
+    shell: "python /net/eichler/vol4/home/jlhudd/fasta_tools/merge_assemblies_by_tiling_path.py --gap_size=5000 {input} {output.fasta} _merged > {output.psl}"
 
 rule get_local_assemblies_for_genotyping:
     input: config["local_assembly_alignments"], "contigs_in_final_tiling_path.txt"
     output: "local_assemblies_for_genotyping.fasta", "local_assemblies_for_genotyping.fasta.fai"
     params: sge_opts=""
-    shell: "python ~jlhudd/fasta_tools/filter_assemblies_by_name.py {input} > {output[0]}; samtools faidx {output[0]}"
+    shell: "python /net/eichler/vol4/home/jlhudd/fasta_tools/filter_assemblies_by_name.py {input} > {output[0]}; samtools faidx {output[0]}"
 
 rule get_contigs_in_final_tiling_path:
     input: "tiling_path_in_contigs.bed"
@@ -209,4 +209,4 @@ rule convert_tiling_path_into_local_assembly_coordinates:
     input: local_assemblies=config["local_assembly_alignments"], tiling_path="padded_tiling_path_of_contigs_with_variants.bed"
     output: "tiling_path_in_contigs.bed"
     params: sge_opts="-l h_rt=02:00:00"
-    shell: "python ~jlhudd/src/smrtsv/scripts/tiling_path_in_reference_to_contigs.py {input.local_assemblies} {input.tiling_path} | sort -k 1,1 -k 2,2n > {output}"
+    shell: "python /net/eichler/vol4/home/jlhudd/src/smrtsv/scripts/tiling_path_in_reference_to_contigs.py {input.local_assemblies} {input.tiling_path} | sort -k 1,1 -k 2,2n > {output}"

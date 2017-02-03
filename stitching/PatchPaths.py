@@ -52,7 +52,10 @@ def PatchPath(ovpQuery, asm, path):
     # Grab the first file.
     #
     if len(path) < 2:
-        return
+        seq = asm.fetch(reference=path[0])
+        sys.stderr.write("singleton " + path[0] + "\t" + str(len(seq)) + "\n")
+
+        return seq
     edge = (path[0], path[1])
     segments = []
     if edge not in ovpQuery:
@@ -61,41 +64,63 @@ def PatchPath(ovpQuery, asm, path):
 
     ovp = ovpQuery[edge]
     segmentStart = ovp.aRead[0]
-    segmentEnd   = ovp.aOvp[1]
-    print "Path of length " + str(len(path))
+    #MOD
+    segmentEnd   = ovp.aMidOvp[1]
+#    segmentEnd   = ovp.aOvp[1]
+
 #    print ovp.a + "\t" + str(segmentStart) + "\t" + str(segmentEnd)
     seq = asm.fetch(reference=ovp.a, start=segmentStart, end=segmentEnd)
     # patch with N's to learn where the gap is
     seq = ReplaceN(seq, args.junctionN)
+
     segments.append(seq)
+
+    
     for i in range(1, len(path)-1):
         prevOverlapEdge = (path[i-1], path[i])
         if prevOverlapEdge not in ovpQuery:
             print "ERROR, did not find an overlap that is in the path at " + str(i)
             sys.exit(0)
-
-        prevOverlap = ovpQuery[prevOverlapEdge]
-        segmentStart = prevOverlap.bOvp[1]
+        #
+        #  Given the overlaps, output the sequence in #'s. 
+        #
+        #  ---------------------> (prevOverlap.a)
+        #            -----------####################> (prevOverlap.b, also curOverlap.a
+        #                              ----------------------------> (curOverlap.b)
+        #
+        prevOverlap    = ovpQuery[prevOverlapEdge]
+        #
+        # Will take
+        #MOD
+#        segmentStart   = prevOverlap.bOvp[1]
+        segmentStart   = prevOverlap.bMidOvp[1]
         curOverlapEdge = (path[i], path[i+1])
-        curOverlap = ovpQuery[curOverlapEdge]
-        segmentEnd = curOverlap.aOvp[1]
+        curOverlap     = ovpQuery[curOverlapEdge]
+        #MOD
+#        segmentEnd     = curOverlap.aOvp[1]
+        segmentEnd     = curOverlap.aMidOvp[1]
 
         if segmentStart > segmentEnd:
-            sys.stdout.write( curOverlap.a + "\t " +str(segmentStart) + "\t" + str(segmentEnd) + "\t" + curOverlap.b)
+            sys.stdout.write( str(i) + "\t" + curOverlap.a + \
+                              "\t " +str(segmentStart) + "\t" \
+                              + str(segmentEnd) + "\t" + curOverlap.b)
             sys.stdout.write("\t***")
-            sys.stdout.write("\n")
+
 
         segment = asm.fetch(reference=curOverlap.a, start = segmentStart, end = segmentEnd)
         segment = ReplaceN(segment, args.junctionN)
+
         segments.append(segment)
 
     if len(path) > 2:
         edge = (path[-2], path[-1])
 
         ovp = ovpQuery[edge]
-        segmentStart = ovp.bOvp[0]
+        #MOD
+        segmentStart = ovp.bMidOvp[1]
+        #segmentStart = ovp.bOvp[1]
         segmentEnd   = ovp.bRead[1]
-        segment = asm.fetch(reference=curOverlap.a, start = segmentStart, end = segmentEnd)
+        segment = asm.fetch(reference=curOverlap.b, start = segmentStart, end = segmentEnd)
         segment = ReplaceN(segment, args.junctionN)
         segments.append(segment)
 
@@ -113,10 +138,27 @@ ovpQuery = Overlap.MakeOverlapQuery(overlaps)
 
 contigOut = open(args.contigs,'w')
 
-for pathIndex in range(0,len(paths)):
-   contig = PatchPath(ovpQuery, asm, paths[pathIndex])
-   if contig is None:
-       continue
-   contigSeq = SeqRecord.SeqRecord(Seq.Seq(contig), id="stitch.{:0>3}.{}.{}".format(pathIndex, len(paths[pathIndex]), len(contig)), name="", description="")
 
-   SeqIO.write(contigSeq, contigOut, "fasta")
+import re
+regionRe = re.compile("(.*):(\d+)-(\d+)/.*")
+def SplitRegion(region):
+    m=regionRe.match(region)
+    g=m.groups()
+    return (g[0],g[1], g[2])
+
+
+
+for pathIndex in range(0,len(paths)):
+
+    if len(paths[pathIndex]) == 0:
+        continue
+    contig = PatchPath(ovpQuery, asm, paths[pathIndex])
+    firstRegion = SplitRegion(paths[pathIndex][0])
+    lastRegion = SplitRegion(paths[pathIndex][-1])    
+    if contig is None:
+        continue
+    contigSeq = SeqRecord.SeqRecord(Seq.Seq(contig), id="stitch.{:0>3}.{}.{}.{}.{}.{}".format(pathIndex, len(paths[pathIndex]), len(contig),firstRegion[0],firstRegion[1],lastRegion[2]), name="", description="")
+
+    SeqIO.write(contigSeq, contigOut, "fasta")
+                    
+        

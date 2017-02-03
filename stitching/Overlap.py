@@ -12,6 +12,10 @@ class Overlap:
             self.aOvp = [int(v[6]), int(v[7])]
             self.bOvp = [int(v[8]), int(v[9])]
 
+        self.indel = int(v[10])
+        self.aMidOvp = [int(v[11]), int(v[11])]
+        self.bMidOvp = [int(v[12]), int(v[13])]
+
     def BLength(self):
         return self.bRead[1]-self.bRead[0]
 
@@ -58,13 +62,19 @@ class Overlap:
 
 
 def ReadOverlapFile(overlapFileName):
-    ovpFile = open(overlapFileName)
-    return [ Overlap(line) for line in ovpFile]
 
+        
+    overlapFile = open(overlapFileName)
+    overlaps = []
+    i=1
+    for line in overlapFile:
+        # hack to get around blank lines
+        if len(line) > 1:
+            overlaps.append(Overlap(line))
+        i+=1
+    
+    return overlaps
 
-def ReadOverlapFile(overlapFileName):
-    ovpFile = open(overlapFileName)
-    return [ Overlap(line) for line in ovpFile]
 
 
 def MakeOverlapQuery(overlaps):

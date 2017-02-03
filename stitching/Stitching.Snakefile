@@ -1,5 +1,4 @@
 import os
-
 import tempfile
 
 #
@@ -25,14 +24,16 @@ faiFile = open(config['ref']+".fai")
 chroms = [l.split()[0].rstrip() for l in faiFile]
 
 SNAKEMAKE_DIR = os.path.dirname(workflow.snakefile)
+cwd=os.getcwd()
 
 shell.prefix(". {SNAKEMAKE_DIR}/config.sh; ")
 
-haps=[0,1]
+haps=["h0","h1"]
 
 rule all:
     input:
         asmBed      = expand("{base}.{hap}.bam.bed",base=config['alnBase'], hap=haps),
+        contigBed   = expand("overlaps/overlaps.{hap}.{chrom}.ctg0.bed",hap=haps,chrom=chroms),
         asmFasta    = expand("{base}.{hap}.bam.fasta", base=config['alnBase'], hap=haps),
         asmOverlaps = expand("overlaps/overlap.{hap}.{chrom}.txt", hap=haps, chrom=chroms),
         asmGraphs   = expand("overlaps/overlap.{hap}.{chrom}.txt.gml", hap=haps, chrom=chroms),
@@ -55,7 +56,7 @@ rule MakeAnnotation:
     params:
         sge_opts="-l mfree=1G -pe serial 4 -l h_rt=24:00:00"
     shell:
-        "make -f " + SNAKEMAKE_DIR + "/DiploidAnnotation.mak H0SAM=contigs.0.fasta.sam H1SAM=contigs.1.fasta.sam DIR=stitching_hap_gaps -j 2"
+        "make -f " + SNAKEMAKE_DIR + "/DiploidAnnotation.mak H0SAM=contigs.h0.fasta.sam H1SAM=contigs.h1.fasta.sam DIR=stitching_hap_gaps -j 2"
     
 rule MakeChrAsmFasta:
     input:
@@ -69,14 +70,26 @@ rule MakeChrAsmFasta:
 
 rule MakeAsmAln:
     input:
-        asmFasta="contigs.{hap}.fasta"
+        asmContigs=expand("contigs/patched.{{hap}}.{chrom}.fasta.sam", chrom=chroms),
+        aln="alignments.{hap}.bam"
     output:
         asmSam="contigs.{hap}.fasta.sam"
     params:
-        sge_opts="-l mfree=15G -pe serial 4 -l h_rt=04:00:00",
+        sge_opts="-l mfree=1G -pe serial 1 -l h_rt=01:00:00"
+    shell:
+        "samtools view -H {input.aln} > {output.asmSam}; grep -h -v \"^@\" {input.asmContigs} >> {output.asmSam}"
+    
+    
+rule MakeContigAsmAln:
+    input:
+        asmFasta="contigs/patched.{hap}.{chrom}.fasta"
+    output:
+        asmSam=temp("contigs/patched.{hap}.{chrom}.fasta.sam")
+    params:
+        sge_opts="-l mfree=4G -pe serial 4 -l h_rt=04:00:00",
     	ref=config['ref']
     shell:
-        "blasr {input.asmFasta} {params.ref} -alignContigs -sam -minMapQV 30 -out {output.asmSam} -piecewise -nproc 4"
+        SNAKEMAKE_DIR+ "/MapContigs.py --contigs {input.asmFasta} --ref {params.ref} --tmpdir " + TMPDIR + " --blasr blasr --out {output.asmSam} --nproc 4"
 
 rule MakeChrAsmBed:
     input:
@@ -87,7 +100,7 @@ rule MakeChrAsmBed:
         sge_opts="-l mfree=1G -pe serial 1 -l h_rt=01:00:00",
         hgsvg=SNAKEMAKE_DIR+ "/.."
     shell:
-        "/net/eichler/vol5/home/mchaisso/projects/mcutils/bin/samToBed {input.asmSam} --reportIdentity | bedtools sort > {output.asmBed}"
+        "/net/eichler/vol5/home/mchaisso/projects/mcutils/bin/samToBed {input.asmSam} --useXS --reportIdentity | bedtools sort > {output.asmBed}"
 
 rule MakeChrAsmBed6:
     input:
@@ -109,7 +122,7 @@ rule MakeAsmBB:
         sge_opts="-l h_rt=01:00:00 -l mfree=1G -pe serial 1",
         ref=config['ref']
     shell:
-        "module load uccc  && bedToBigBed {input.asmBed} {params.ref}.fai {output.asmBB} -type=bed6"
+        "module load ucsc  && bedToBigBed {input.asmBed} {params.ref}.fai {output.asmBB} -type=bed6"
 
 
 rule MakeAsmContigs:
@@ -146,17 +159,39 @@ rule MakeAsmGraphs:
         "~/projects/HGSVG/hgsvg/stitching/OverlapsToGraph.py {input.asmOverlap} --out {output.asmOverlapGraph}"
 
 
-
+#subworkflow AsmOverlapsWorkflow:
+#    snakefile: SNAKEMAKE_DIR +"/MakeAsmOverlaps.Snakefile"
+#    workdir:cwd
+#
 rule MakeAsmOverlaps:
     input:
-        asmBed = "alignments.h{hap}.bam.bed",
-        asm = "alignments.{hap}.bam.fasta"
+        bed="overlaps/overlaps.{hap}.{chrom}.ctg0.bed",
+        asm="alignments.{hap}.bam.fasta"
+#        asmOverlap="overlaps/overlap.{hap}.{chrom}.txt"
+#        asmOverlap=AsmOverlapsWorkflow("overlaps/overlap.{hap}.{chrom}.txt")
     output:
-        asmOverlap="overlaps/overlap.{hap}.{chrom}.txt"
+        asmOverlapOut="overlaps/overlap.{hap}.{chrom}.txt"
     params:
-        sge_opts="-l mfree=1G -pe serial 12 -l h_rt=72:00:00 -N ovp"
+        sge_opts="-l mfree=1G -pe serial 12 -l h_rt=72:00:00 -N ovp -e /dev/null -o /dev/null ",
+        tmpdir=TMPDIR
     shell:
-        "mkdir -p " + TMPDIR + "; mkdir -p overlaps; /net/eichler/vol5/home/mchaisso/projects/HGSVG/hgsvg/stitching/OverlapContigsOrderedByBed.py {input.asmBed} {input.asm} --chrom {wildcards.chrom} --out {output.asmOverlap} --nproc 12 --tmpdir " + TMPDIR + " --blasr " + config['blasr']
+        "module load anaconda; mkdir -p overlaps/sub_snakemake.{wildcards.hap}.{wildcards.chrom}/overlaps ; cd overlaps/sub_snakemake.{wildcards.hap}.{wildcards.chrom}/overlaps; ln -s ../../../{input.bed} .; cd ..; ln -s ../../{input.asm}* .; ln -s ../../config.json .;  snakemake -cwd -p -s " + SNAKEMAKE_DIR +"/MakeAsmOverlaps.Snakefile -j 20 --cluster \"qsub {params.sge_opts} \" {output.asmOverlapOut} --config " + " ".join(["{}={}".format(k,config[k]) for k in config.keys()] + ["bed={input.bed}"]) + "; mv -f {output.asmOverlapOut} ../;"
+
+                                                                                                                                                          
+
+
+rule MakeContigBed:
+    input:
+        asmBed = "alignments.{hap}.bam.bed"
+    output:
+        contigBed = expand("overlaps/overlaps.{{hap}}.{chrom}.ctg0.bed",chrom=chroms)
+    params:
+        sge_opts="-l h_rt=06:00:00 -l mfree=2G  -pe serial 1"
+    shell:
+        """for c in {} ; do  
+        grep \"^$c\t\" {{input.asmBed}} > overlaps/overlaps.{{wildcards.hap}}.$c.bed;
+        grep "/0	"  overlaps/overlaps.{{wildcards.hap}}.$c.bed > overlaps/overlaps.{{wildcards.hap}}.$c.ctg0.bed
+        done || true """.format(" ".join(chroms))
     
 rule MakeAsmBed:
     input:
@@ -170,7 +205,7 @@ rule MakeAsmBed:
 
 rule MakeAsmFasta:
     input:
-        asmBam = "alignments.h{hap}.bam"
+        asmBam = "alignments.{hap}.bam"
     output:
         asmFasta = "alignments.{hap}.bam.fasta"
     params:
@@ -178,35 +213,3 @@ rule MakeAsmFasta:
     shell:
         "samtools view {input.asmBam} | awk '{{ print \">\"$1; print $10;}}' | fold | sed '/^$/d' > {output.asmFasta}; samtools faidx {output.asmFasta}"
 
-
-rule convert_psl_to_chain:
-    input: "contigs_to_merged_assemblies.psl"
-    output: "contigs_to_merged_assemblies.chain"
-    params: sge_opts="-l h_rt=00:05:00"
-    shell: "pslToChain {input} {output}"
-
-rule merge_local_assemblies_into_chromosomes:
-    input: "local_assemblies_for_genotyping.fasta", "tiling_path_in_contigs.bed"
-    output: fasta="merged_local_assemblies_for_genotyping.fasta", psl="contigs_to_merged_assemblies.psl"
-    params: sge_opts="-l h_rt=00:15:00"
-    shell: "python ~jlhudd/fasta_tools/merge_assemblies_by_tiling_path.py --gap_size=5000 {input} {output.fasta} _merged > {output.psl}"
-
-rule get_local_assemblies_for_genotyping:
-    input: config["local_assembly_alignments"], "contigs_in_final_tiling_path.txt"
-    output: "local_assemblies_for_genotyping.fasta", "local_assemblies_for_genotyping.fasta.fai"
-    params: sge_opts=""
-    shell: "python ~jlhudd/fasta_tools/filter_assemblies_by_name.py {input} > {output[0]}; samtools faidx {output[0]}"
-
-rule get_contigs_in_final_tiling_path:
-    input: "tiling_path_in_contigs.bed"
-    output: "contigs_in_final_tiling_path.txt"
-    params: sge_opts="-l h_rt=00:05:00"
-    shell: "cut -f 4 {input} | sort | uniq > {output}"
-
-# Convert tiling path through uncontained assemblies with SVs into corresponding
-# space in contigs
-rule convert_tiling_path_into_local_assembly_coordinates:
-    input: local_assemblies=config["local_assembly_alignments"], tiling_path="padded_tiling_path_of_contigs_with_variants.bed"
-    output: "tiling_path_in_contigs.bed"
-    params: sge_opts="-l h_rt=02:00:00"
-    shell: "python ~jlhudd/src/smrtsv/scripts/tiling_path_in_reference_to_contigs.py {input.local_assemblies} {input.tiling_path} | sort -k 1,1 -k 2,2n > {output}"

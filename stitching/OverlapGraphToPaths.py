@@ -142,6 +142,8 @@ def DFSOverlaps(g,n,o,c,d, prevOverlap=None):
     return (maxDepth, maxDest)
 
 
+
+
 def GreedyPath(g,n,o):
     source = n
     path = [n]
@@ -181,6 +183,53 @@ def GreedyPath(g,n,o):
 
     print "Path length: " + str(len(path)) + " Ended at: " + path[-1]
     return path
+
+def DFSLongestPath(g, n, lp, lpd):
+    # at dest node
+    if len(g[n]) == 0:
+        lp[n] = 1
+        lpd[n] = None
+        return
+    
+    for d in g[n]:
+        if lp[d] == -1:
+            DFSLongestPath(g, d, lp, lpd)
+        if lp[n] < lp[d] + 1:
+            lp[n] = lp[d] + 1
+            lpd[n] = d
+
+
+def StoreLongestPath(g,n,lp,lpd):
+    path = [n]
+    dest = lpd[n]
+    while dest is not None:
+        n = lpd[n]
+        path.append(n)
+        dest = lpd[n]
+
+    return path
+                
+def LongestPath(g):
+
+    ts = nx.topological_sort(g)
+    lp = { i: -1 for i in ts }
+    lpd = { i: None for i in ts }
+    for n in ts:
+        if lp[n] == -1:
+            DFSLongestPath(g, n, lp, lpd)
+
+    longestPathLength = 0
+    longestPathStart = -1
+    for n in ts:
+        if lp[n] > longestPathLength:
+            longestPathStart = n
+            longestPathLength = lp[n]
+    path = StoreLongestPath(g, longestPathStart, lp, lpd)
+    print "Stored longest path " + str(longestPathLength) + " stored " + str(len(path))
+    print path
+    return path
+        
+    
 
 def GreedyPaths(g, o):
     nx.set_node_attributes(g, 'visited', {n: False for n in g.nodes()})
@@ -269,13 +318,38 @@ def RemoveTransitiveEdges(g, o):
     g.remove_edges_from(transitive)
 
 g = nx.read_gml(args.graph)
+
 overlapFile = open(args.ovp)
 pathFile = open(args.paths,'w')
-overlaps = [Overlap.Overlap(line) for line in overlapFile]
+overlaps = []
+i=1
+for line in overlapFile:
+    # hack to get around blank lines
+    if len(line) > 1:
+        overlaps.append(Overlap.Overlap(line))
+    i+=1
 
-RemoveTransitiveEdges(g, overlaps)
-RemoveTips(g,1)
-paths = GreedyPaths(g, overlaps)
+
+
+#RemoveTransitiveEdges(g, overlaps)
+#RemoveTips(g,1)
+
+components = nx.weakly_connected_components(g)
+paths = []
+for comp in components:
+    print "comp " + str(len(comp))    
+    subgraph = g.subgraph(comp)
+#    greedyPaths=GreedyPaths(subgraph, overlaps)
+    longestPath=LongestPath(subgraph)
+    paths.append(longestPath)
+#    for p in greedyPaths:
+#        print "greedy\t" + str(len(p)) + "\t" + str(p)
+#    print "longest\t" + str(len(longestPath)) + "\t" + str(longestPath)
+    
+#    nx.write_gml(subgraph, "subgraph.gml")
+#    sys.exit(0)
+
+#paths = GreedyPaths(g, overlaps)
 for p in paths:
     pathFile.write("\t".join(p) + "\n")
 

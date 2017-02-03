@@ -1,4 +1,4 @@
-configfile: "config.json"
+configfile: "config.mappacbio.json"
 import os
 import os.path
 import subprocess
@@ -45,6 +45,14 @@ rule all:
                       phasing=config['dataset']['phasing'],
                       suffix=["",".bai"])
 
+
+rule MakeBams:
+    input:
+      fofns=expand("{b}.{r}.fofn", b=config['aln_base'], r=chunkRange),
+      bams=expand("bams/{b}.{r}.bam", b=config['aln_base'], r=chunkRange),
+      bai=expand("bams/{b}.{r}.bam.bai", b=config['aln_base'], r=chunkRange),
+      bamFofn="alignments.txt",
+        
 rule MakeBamManifest:
     params:
         sample=config['dataset']['sample'],
@@ -131,11 +139,11 @@ rule AlignFile:
    params:
        ref=config['ref'],
        tmp=GetTemp(),
-       sge_opts="-l h_rt=48:00:00 -l mfree=3G -pe serial 12 -N aln.{r}"
+       sge_opts="-l h_rt=48:00:00 -l mfree=4G -pe serial 12 -N aln.{r}"
    output:
        bam="bams/{b}.{r}.bam"
    shell:
-       "mkdir -p {params.tmp}; /net/eichler/vol5/home/mchaisso/projects/blasr/cpp/alignment/bin/blasr {input.fofn} {params.ref} -out /dev/stdout -sam -nproc 12 -insertion 8 -deletion 8 -mismatch 4 -indelRate 3 -minMapQV 20 -advanceExactMatches 10 -maxMatch 25 -sdpTupleSize 13  -sdpMaxAnchorsPerPosition 20 -clipping subread | samtools view -uS - | samtools sort -@8 -m2G  - -T {params.tmp}/aln -o {output} "
+       "mkdir -p {params.tmp}; /net/eichler/vol5/home/mchaisso/projects/blasr/cpp/alignment/bin/blasr {input.fofn} {params.ref} -out /dev/stdout -sam -nproc 12 -insertion 8 -deletion 8 -mismatch 4 -indelRate 3 -minMapQV 20 -advanceExactMatches 10 -maxMatch 25 -sdpTupleSize 13  -sdpMaxAnchorsPerPosition 20 -clipping subread | samtools view -uS - | samtools sort -@4 -m2G  - -T {params.tmp}/aln -o {output} "
 
 rule MakeFofns:
    input:

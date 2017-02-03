@@ -76,10 +76,12 @@ void ParseBarcodeList(char* str, vector<string> &refBCList, vector<string> &altB
 		}
 	}
 }
-void RemoveInactiveBarcodes(map<string,int> & bc, int curDNAPos, int dist) {
+int RemoveInactiveBarcodes(map<string,int> & bc, int curDNAPos, int dist) {
 	map<string, int>::iterator bcIt;
 	bcIt = bc.begin();
 	int before = bc.size();
+	int prev = -1;
+	int minPos = -1;
 	while (bcIt != bc.end()) {
 		if (curDNAPos - bcIt->second > dist) {
 			map<string, int>::iterator next = bcIt;
@@ -88,9 +90,13 @@ void RemoveInactiveBarcodes(map<string,int> & bc, int curDNAPos, int dist) {
 			bcIt = next;
 		}
 		else {
+			if (minPos == -1 or minPos > bcIt->second) {
+				minPos = bcIt->second;
+			}
 			++bcIt;
 		}
 	}
+	return minPos;
 }
 
 int main(int argc, char* argv[]) {
@@ -163,7 +169,10 @@ int main(int argc, char* argv[]) {
 		int prevVCFPos = 0, prevDNAPos=0;
 		int prevHap0 = 0, prevHap1 = 0;
 		int nUnphased = 0;
-		while (bam_itr_next(readsFile, bamIter, read) >= 0) {
+		int bamRetval;
+		int h0BCPos = 0;
+		int h1BCPos = 0;
+		while ((bamRetval = bam_itr_next(readsFile, bamIter, read)) > 0) {
 			uint8_t *aux = bam_aux_get(read, "BX");
 			++nReads;
 			if (aux == 0 ) {
@@ -177,13 +186,17 @@ int main(int argc, char* argv[]) {
 			//
 			// First purge inactive elements.
 			//
-			RemoveInactiveBarcodes(activeH0Barcodes, curDNAPos, dist);
-			RemoveInactiveBarcodes(activeH1Barcodes, curDNAPos, dist);			
+			if (curDNAPos - h0BCPos > dist) {
+				h0BCPos = RemoveInactiveBarcodes(activeH0Barcodes, curDNAPos, dist);
+			}
+			if (curDNAPos - h1BCPos > dist) {
+				h1BCPos = RemoveInactiveBarcodes(activeH1Barcodes, curDNAPos, dist);			
+			}
 			//
 			// Advance the list of active elements
 			//
 			while (curVarPos - curDNAPos < dist and
-						 tbx_itr_next(vcfFile, tabix, vcfIter, &str)) {
+						 tbx_itr_next(vcfFile, tabix, vcfIter, &str) >=0 ) {
 				int ndst = 0; char **dst = NULL;
 				int i;
 				if (str.l > 0) {
@@ -236,9 +249,9 @@ int main(int argc, char* argv[]) {
 										activeH1Barcodes[refBCList[b]] = var->pos;
 									}
 								}
-								int u1, u2;
-								CountUnique(activeH0Barcodes, activeH1Barcodes, u1,u2);
 								if (verbose) {
+									int u1, u2;
+									CountUnique(activeH0Barcodes, activeH1Barcodes, u1,u2);
 									cerr << "# Unique " << u1 << "/" << activeH0Barcodes.size() << "\t" << u2 << "/" << activeH1Barcodes.size() << endl;
 								}
 							}
@@ -282,14 +295,11 @@ int main(int argc, char* argv[]) {
 		cerr << "Processed " << header->target_name[targetId] << " " << nReads << "\t" << nUnphased << endl;
 	}
 
-
-
-	
 	bam_destroy1(read);
 	bam_hdr_destroy(header);
 	sam_close(readsFile);
 
+	hts_close(hap0);
+	hts_close(hap1);
 	
-	
-
 }

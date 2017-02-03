@@ -110,6 +110,6 @@ rule MapGencode:
     output:
         psl="{hap}/gencode.psl"
     shell:"""
-{params.blat} {input.ref} {input.gencode}  {output.psl} -q=dna -t=dna -threads=8 -minScore=200 
+{params.blat} {input.ref} {input.gencode}  {output.psl} -q=dna -t=dna -minScore=200 
 """
     

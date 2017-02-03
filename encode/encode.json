@@ -1,0 +1,8 @@
+{
+	"acc"  : "accessions.txt",
+	"path" : "/net/eichler/vol24/projects/structural_variation/nobackups/raw_reads/NA19240/ENCODE/",
+	"hap0" : "../NA19240.h0.fasta",
+	"hap1" : "../NA19240.h1.fasta",
+  	"gencode": "/net/eichler/vol2/eee_shared/RefSeq/H_sapiens/gencode.v25.pc_transcripts.hugo.fa",
+  	"blat": "/net/eichler/vol2/local/inhousebin/blat"
+}

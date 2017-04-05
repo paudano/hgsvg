@@ -18,6 +18,9 @@ if len(inputFiles) % chunkSize != 0:
     nChunks +=1
     
 chunkRange = ["{:02d}".format(i) for i in list(range(1,nChunks))]
+SNAKEMAKE_DIR = os.path.dirname(workflow.snakefile)
+
+shell.prefix(". {SNAKEMAKE_DIR}/config.sh; ")
 
 alnFiles = [config['aln_base'] + "." + c + ".bam" for c in chunkRange]
 SNAKEMAKE_DIR = os.path.dirname(workflow.snakefile)
@@ -67,7 +70,7 @@ rule MakeBamManifest:
         ref=config['ref'],
         sge_opts="-pe serial 1 -l h_rt=24:00:00 -l mfree=1G -N man"
     input:
-        bam="manifest/"+config['dataset']['sample'] + "." + config['dataset']['pop'] +".{chrom}." + config['dataset']['aln']+"." + config['dataset']['date'] + "." + config['dataset']['dtype'] + "." + config['dataset']['phasing'] + ".{suffix}"
+        bam="bams/"+config['dataset']['sample'] + "." + config['dataset']['pop'] +".{chrom}." + config['dataset']['aln']+"." + config['dataset']['date'] + "." + config['dataset']['dtype'] + "." + config['dataset']['phasing'] + ".{suffix}"
 
     output:
         manifest="manifest/"+config['dataset']['sample'] + "." + config['dataset']['pop'] +".{chrom}." + config['dataset']['aln']+"." + config['dataset']['date'] + "." + config['dataset']['dtype'] + "." + config['dataset']['phasing'] + ".{suffix}.manifest.tsv"
@@ -132,7 +135,8 @@ rule IndexBam:
        sge_opts="-l h_rt=24:00:00 -l mfree=4G -pe serial 1 -N bai"
    shell:
        "samtools index {input.bam}"
-   
+
+       
 rule AlignFile:
    input:
        fofn="{b}.{r}.fofn"
@@ -143,13 +147,13 @@ rule AlignFile:
    output:
        bam="bams/{b}.{r}.bam"
    shell:
-       "mkdir -p {params.tmp}; /net/eichler/vol5/home/mchaisso/projects/blasr/cpp/alignment/bin/blasr {input.fofn} {params.ref} -out /dev/stdout -sam -nproc 12 -insertion 8 -deletion 8 -mismatch 4 -indelRate 3 -minMapQV 20 -advanceExactMatches 10 -maxMatch 25 -sdpTupleSize 13  -sdpMaxAnchorsPerPosition 20 -clipping subread | samtools view -uS - | samtools sort -@4 -m2G  - -T {params.tmp}/aln -o {output} "
+       "mkdir -p {params.tmp}; mkdir -p bam; /net/eichler/vol5/home/mchaisso/projects/blasr/cpp/alignment/bin/blasr {input.fofn} {params.ref} -out /dev/stdout -sam -nproc 12 -insertion 8 -deletion 8 -mismatch 4 -indelRate 3 -minMapQV 20 -advanceExactMatches 10 -maxMatch 25 -sdpTupleSize 13  -sdpMaxAnchorsPerPosition 20 -clipping subread | samtools view -uS - | samtools sort -@4 -m2G  - -T {params.tmp}/aln -o {output} "
 
 rule MakeFofns:
    input:
        fofn=config['reads']
    output:
-       expand("{b}.{r}.fofn", b=config['aln_base'], r=chunkRange)
+       fofns=dynamic("{b}.{r}.fofn")
    params:
        base=config['aln_base'],
        linesPerChunk=config['chunk'],

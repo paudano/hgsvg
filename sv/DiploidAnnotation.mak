@@ -3,20 +3,17 @@ HGSVG=/net/eichler/vol5/home/mchaisso/projects/HGSVG/hgsvg
 BLASR=/net/eichler/vol5/home/mchaisso/software/blasr_2/cpp/alignment/bin/blasr
 REF=/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.fasta
 
-H0SAM?=alignments.h0.sam
-H1SAM?=alignments.h1.sam
+H0SAM?=$(PWD)/alignments.h0.sam
+H1SAM?=$(PWD)/alignments.h1.sam
 DIR?=hap_gaps
 NFIELDS?=10
 include $(PARAMS)
-all: samfiles.fofn \
-  $(DIR)/hap0/gaps.bed \
+all:$(DIR)/hap0/gaps.bed \
   $(DIR)/hap1/gaps.bed \
   $(DIR)/hap0/insertions.bed \
   $(DIR)/hap1/insertions.bed \
   $(DIR)/diploid/insertions.bed \
   $(DIR)/diploid/deletions.bed \
-  $(H0SAM) \
-  $(H1SAM) \
   $(PWD)/alignments.h0.bam \
   $(PWD)/alignments.h1.bam \
   $(DIR)/diploid/deletions.annotated.bed \
@@ -30,32 +27,30 @@ all: samfiles.fofn \
   $(DIR)/diploid/insertion/NONE.bed 
 
 
-samfiles.fofn: samfiles
-	ls samfiles | awk '{ print "samfiles/"$$1;}' > $@
+samfies.fofn: samfiles/chr22.18953772-19013772.sam
+	ls samfiles/*| awk '{ print "samfiles/"$1; }' > $@
 
-$(H0SAM): samfiles.fofn
-	$(HGSVG)/sv/FilterSamByHaplotype.py samfiles.fofn --header $(HGSVG)/sv/header.sam
 
-$(H1SAM): alignments.h0.sam
-	touch $@
+$(PWD)/alignments.h0.sam: samfiles.fofn
+	$(HGSVG)/sv/CombineAssemblies.py --alignments samfiles.fofn --header $(HGSVG)/sv/header.sam
 
 $(PWD)/alignments.h0.bam: $(H0SAM)
 	-mkdir -p /var/tmp/mchaisso
 	samtools view -bS $(H0SAM) | samtools sort -T /var/tmp/mchaisso/aln.0.$$PPID -o $@
 	samtools index $@
 
-$(PWD)/alignments.h1.bam: $(H1SAM)
+$(PWD)/alignments.h1.bam: $(H0SAM)
 	-mkdir -p /var/tmp/mchaisso
 	samtools view -bS $(H1SAM) | samtools sort -T /var/tmp/mchaisso/aln.1.$$PPID -o $@
 	samtools index $@
 
-$(DIR)/hap0/gaps.bed: $(H0SAM)
+$(DIR)/hap0/gaps.bed: $(PWD)/alignments.h0.bam
 	-mkdir -p $(DIR)/hap0
-	$(PBS)/PrintGaps.py $(REF) $(H0SAM) --minAlignmentLength 30000 --ignoreHP 3 --minDist 1000 --condense 20 --outFile $@
+	samtools view $^ | $(PBS)/PrintGaps.py $(REF) /dev/stdin --minAlignmentLength 30000 --ignoreHP 3 --minDist 1000 --condense 20 --outFile $@
 
-$(DIR)/hap1/gaps.bed: $(H1SAM)
+$(DIR)/hap1/gaps.bed: $(PWD)/alignments.h1.bam
 	mkdir -p $(DIR)/hap1
-	$(PBS)/PrintGaps.py $(REF) $(H1SAM) --minAlignmentLength 30000  --ignoreHP 3 --minDist 1000 --condense 20 --outFile $@
+	samtools view $^ | $(PBS)/PrintGaps.py $(REF) /dev/stdin --minAlignmentLength 30000  --ignoreHP 3 --minDist 1000 --condense 20 --outFile $@
 
 $(DIR)/hap0/insertions.bed: $(DIR)/hap0/gaps.bed $(PWD)/alignments.h0.bam
 	cd $(DIR)/hap0 && make -f $(HGSVG)/sv/AnnotationPipeline.mak GAPS=gaps.bed ALIGNMENTS=$(PWD)/alignments.h0.bam
@@ -64,16 +59,18 @@ $(DIR)/hap1/insertions.bed: $(DIR)/hap1/gaps.bed $(PWD)/alignments.h1.bam
 	cd $(DIR)/hap1 && make -f $(HGSVG)/sv/AnnotationPipeline.mak GAPS=gaps.bed ALIGNMENTS=$(PWD)/alignments.h1.bam
 
 $(DIR)/hap1/deletions.bed: $(DIR)/hap1/gaps.bed  $(PWD)/alignments.h1.bam
-	cd $(DIR)/hap1 && make -f $(PBS)/AnnotationPipeline.mak GAPS=gaps.bed ALIGNMENTS=$(PWD)/alignments.h1.bam deletions.bed
+	cd $(DIR)/hap1 && make -f $(HGSVG)/sv/AnnotationPipeline.mak GAPS=gaps.bed ALIGNMENTS=$(PWD)/alignments.h1.bam deletions.bed
 
 $(DIR)/hap0/deletions.bed: $(DIR)/hap0/gaps.bed  $(PWD)/alignments.h0.bam
-	cd $(DIR)/hap0 && make -f $(PBS)/AnnotationPipeline.mak GAPS=gaps.bed ALIGNMENTS=$(PWD)/alignments.h0.bam deletions.bed
+	cd $(DIR)/hap0 && make -f $(HGSVG)/sv/AnnotationPipeline.mak GAPS=gaps.bed ALIGNMENTS=$(PWD)/alignments.h0.bam deletions.bed
 
 $(DIR)/diploid/deletions.bed: $(DIR)/hap0/deletions.bed $(DIR)/hap1/deletions.bed
-	$(HGSVG)/sv/utils/MergeHaplotypes.sh $(DIR)/hap0/deletions.bed $(DIR)/hap1/deletions.bed $@ svType svLen svSeq qName qStart qEnd
+	mkdir -p $(DIR)/diploid
+	$(HGSVG)/sv/utils/MergeHaplotypes.sh $(DIR)/hap0/deletions.bed $(DIR)/hap1/deletions.bed $@ "svType svLen svSeq qName qStart qEnd"
 
 $(DIR)/diploid/insertions.bed: $(DIR)/hap0/insertions.bed $(DIR)/hap1/insertions.bed
-	$(HGSVG)/sv/utils/MergeHaplotypes.sh $(DIR)/hap0/insertions.bed $(DIR)/hap1/insertions.bed $@ svType svLen svSeq qName qStart qEnd
+	mkdir -p $(DIR)/diploid
+	$(HGSVG)/sv/utils/MergeHaplotypes.sh $(DIR)/hap0/insertions.bed $(DIR)/hap1/insertions.bed $@ "svType svLen svSeq qName qStart qEnd"
 
 $(DIR)/diploid/insertion/L1.bed: $(DIR)/diploid/insertions.bed
 	-mkdir $(DIR)/diploid/insertion

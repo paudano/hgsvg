@@ -37,6 +37,9 @@ insertions.bed: $(GAPS)
 deletions.bed: $(GAPS)
 	egrep "^#|deletion" $(GAPS) | bedtools sort -header > $@
 
+tiling_contigs.tab: $(ALIGNMENTS).bed
+	$(PBS)/local_assembly/TilingPath.py $^ $@
+
 indels.bed: $(GAPS) 
 	$(PBS)/PrintGaps.py $(REF) $(ALIGNMENTS) --outFile $@.tmp --ignoreHP 100 --minLength 2 --maxLength 50
 	$(PBS)/SmallIndelAnalysis/FilterGapsByTilingPath.py $@.tmp tiling_contigs.tab --out $@

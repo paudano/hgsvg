@@ -85,27 +85,24 @@ def PatchPath(ovpQuery, asm, path):
         #  Given the overlaps, output the sequence in #'s. 
         #
         #  ---------------------> (prevOverlap.a)
-        #            -----------####################> (prevOverlap.b, also curOverlap.a
+        #            -------################--------> (prevOverlap.b, also curOverlap.a
         #                              ----------------------------> (curOverlap.b)
         #
         prevOverlap    = ovpQuery[prevOverlapEdge]
-        #
-        # Will take
-        #MOD
-#        segmentStart   = prevOverlap.bOvp[1]
         segmentStart   = prevOverlap.bMidOvp[1]
+
         curOverlapEdge = (path[i], path[i+1])
         curOverlap     = ovpQuery[curOverlapEdge]
-        #MOD
-#        segmentEnd     = curOverlap.aOvp[1]
         segmentEnd     = curOverlap.aMidOvp[1]
 
         if segmentStart > segmentEnd:
-            sys.stdout.write( str(i) + "\t" + curOverlap.a + \
+
+            sys.stderr.write( str(i) + "\t" + curOverlap.a + \
                               "\t " +str(segmentStart) + "\t" \
                               + str(segmentEnd) + "\t" + curOverlap.b)
-            sys.stdout.write("\t***")
-
+            sys.stderr.write("\t***\n")
+            segmentEnd=segmentStart
+          
 
         segment = asm.fetch(reference=curOverlap.a, start = segmentStart, end = segmentEnd)
         segment = ReplaceN(segment, args.junctionN)

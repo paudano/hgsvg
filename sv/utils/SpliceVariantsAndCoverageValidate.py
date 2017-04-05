@@ -14,20 +14,26 @@ import os
 import sys
 
 ap = argparse.ArgumentParser(description="Given a gaps.bed file, splice variants into the reference, remap reads to this, and count gaps. ")
-ap.add_argument("--gaps", help="Gaps file (can be insertions and deletions).", required=True)
-ap.add_argument("--ref", help="Reference file.", required=True)
-ap.add_argument("--reads", help="FOFN of aligned reads.", required=True)
-ap.add_argument("--flank", help="Use this amount of the reference when aligning reads", default=900,type=int)
+ap.add_argument("--gaps",   help="Gaps file (can be insertions and deletions).", required=True)
+ap.add_argument("--ref",    help="Reference file.", required=False)
+ap.add_argument("--reads",  help="FOFN of aligned reads.", required=False)
+ap.add_argument("--flank",  help="Use this amount of the reference when aligning reads", default=900,type=int)
 ap.add_argument("--window", help="Collect all gaps within this window.", type=int, default=1000)
 ap.add_argument("--minGap", help="Minimum gap size.", default=30, type=int)
-ap.add_argument("--out", help="Output file.", default="/dev/stdout")
-ap.add_argument("--tmpdir",help="Temporary directory",default=None)
-ap.add_argument("--nproc", help="Number of threads.", default=4,type=int)
-ap.add_argument("--keep", help="Keep temporary files", default=False, action='store_true')
-ap.add_argument("--mssm", help="Parse mssm lines.", default=False, action='store_true')
+ap.add_argument("--maxSize", help="Maximum size of region.", default=None, type=int)
+ap.add_argument("--maxCoverage", help="Maximum coverage to allow.", default=100, type=int)
+ap.add_argument("--out",    help="Output file.", default="/dev/stdout")
+ap.add_argument("--tmpdir", help="Temporary directory",default=None)
+ap.add_argument("--nproc",  help="Number of threads.", default=4,type=int)
+ap.add_argument("--keep",   help="Keep temporary files", default=False, action='store_true')
+ap.add_argument("--split",  help="Split input gaps.", default=None, type=int)
+ap.add_argument("--splitDir",  help="Split input gaps into this dir.", default=None)
+ap.add_argument("--mssm",   help="Parse mssm lines.", default=False, action='store_true')
 ap.add_argument("--falcon", help="Parse in falcon format", default=False, action='store_true')
-ap.add_argument("--count", help="Just count clusters, don't do any validation.", default=None)
-ap.add_argument("--haps", help="Consider these haplotypes", default=[], nargs="+")
+ap.add_argument("--count",  help="Just count clusters, don't do any validation.", default=None)
+ap.add_argument("--genotypeVcf", help="Use SNVs to call genotype.", default=None)
+ap.add_argument("--sample", help="Sample to select from genotype", default=None)
+ap.add_argument("--separate-haplotypes", help="Separate haplotypes", dest="separateHaplotypes", default=False, action='store_true')
 
 args = ap.parse_args()
 if args.count is None:
@@ -41,29 +47,45 @@ if args.tmpdir is None:
     else:
         args.tmpdir = os.environ["TMPDIR"]
 
-ref = pysam.FastaFile(args.ref)
 
-refFaiFile = open(args.ref + ".fai")
-refFai = {l.split()[0]: int(l.split()[1]) for l in refFaiFile}
-readsFofn = open(args.reads)
-bamFiles = [pysam.AlignmentFile(line.rstrip(), 'rb') for line in readsFofn]
-
-def CountRefCoverage(samFileName):
+def CountRefCoverage(samFileName, checkHaplotype=False):
     samFile = pysam.AlignmentFile(samFileName,'r')
     refs = {}
-    refs={}
     refs["re"] = 0
     refs["db"] = 0
+    if checkHaplotype == True:
+        haps = {}
+        haps["re"]={}
+        haps["db"]={}        
+        haps["re"][0] = 0
+        haps["re"][1] = 0
+        haps["re"]['u'] = 0        
+        haps["db"][0] = 0
+        haps["db"][1] = 0
+        haps["db"]['u'] = 0        
     for ref in samFile.references:
         refs[ref] = 0
-
+    
     for read in samFile.fetch():
         if read.reference_id != -1:
             rn = read.reference_name 
             if rn not in refs:
                 refs[rn] = 0
             refs[rn]+=1
-    return refs
+            if checkHaplotype:
+                if read.query_name[-2:] == "/0":
+                    hap=0
+                elif read.query_name[-2:] == "/1":
+                    hap=1
+                elif read.query_name[-2:] == "/u":
+                    hap='u'
+                if rn in haps:
+                    haps[rn][hap]+=1
+
+    if checkHaplotype == False:
+        return refs
+    else:
+        return haps
 
 def CountGaps(samFileName, rStart, rEnd):
     samFile = pysam.AlignmentFile(samFileName,'r')
@@ -127,6 +149,7 @@ class Gap:
         self.svLen=0
         self.hap=None
         self.rem=[]
+        self.line=""
 
 def ParseFalconLine(vals):
     gap=Gap()
@@ -137,7 +160,7 @@ def ParseFalconLine(vals):
     return gap
 
 def ParseMSSMLine(vals):
-    print "parsing mssm!"
+
     if len(vals) > 0:
         gap=Gap()
         gap.chrom=vals[0]
@@ -145,18 +168,19 @@ def ParseMSSMLine(vals):
         gap.end=int(vals[2])
         gap.svType=vals[3]
         gap.svLen=len(vals[5])
+        gap.line = "\t".join(vals)
         return gap
     else:
         return None
 
 def ParseGapsLine(vals):
     if len(header) > 0:
-        chromI = header["chrom"]
-        tStartI = header["tStart"]
-        tEndI   = header["tEnd"]
-        svTypeI = header["svType"]
-        svLenI   = header["svLen"]
-        svSeqI = header["svSeq"]
+        chromI    = header["chrom"]
+        tStartI   = header["tStart"]
+        tEndI     = header["tEnd"]
+        svTypeI   = header["svType"]
+        svLenI    = header["svLen"]
+        svSeqI    = header["svSeq"]
         remainder = 6
     else:
         chromI, tStartI, tEndI, svTypeI, svLenI, svSeq = 0,1,2,3,4,5
@@ -169,21 +193,19 @@ def ParseGapsLine(vals):
         gap.end=int(vals[tEndI])
         gap.svType=vals[svTypeI]
         gap.seq=vals[svSeqI]
-
+        gap.line="\t".join(vals)
         gap.svLen=int(vals[svLenI])
         if "hap" in header:
             gap.hap=vals[header["hap"]]
         else:
             gap.hap=None
         return gap
-
     else:
         return None
 
 
 def GetEnd(v):
     if args.mssm:
-        print v.svLen
         return v.start + v.svLen
     elif args.falcon:
         return v.end
@@ -203,8 +225,8 @@ gapsFile = open(args.gaps)
 headerLine = gapsFile.readline()
 gapLines = gapsFile.readlines()
 
-if headerLine[0] != '#':
-    gapLines = [header] + gapLines
+if len(headerLine) > 0 and headerLine[0] != '#':
+    gapLines = [headerLine] + gapLines
     header=None
 else:
     v = headerLine[1:].split()
@@ -225,14 +247,50 @@ gaps= temp
 
 svClusters = []
 i=0
+
+def CompareHaplotypes(a, b, care=False):
+    if care == False:
+        return True
+    else:
+        return a.hap == b.hap
+
 while i < len(gaps):
     svClusters.append([])
     svClusters[-1].append(gaps[i])
 
-    while i < len(gaps)-1 and GetChrom(gaps[i]) == GetChrom(gaps[i+1]) and GetStart(gaps[i+1])-GetEnd(gaps[i]) < args.window:
+    while i < len(gaps)-1 and \
+        GetChrom(gaps[i]) == GetChrom(gaps[i+1]) and \
+        GetStart(gaps[i+1])-GetEnd(gaps[i]) < args.window and \
+        CompareHaplotypes(gaps[i], gaps[i+1], args.separateHaplotypes):
         i+=1
         svClusters[-1].append(gaps[i])
     i+=1
+
+
+if args.split is not None:
+    sStart = 0
+    sEnd = 0
+    b = len(svClusters)/args.split
+    for i in range(0,args.split-1):
+        sEnd+=b
+        clustFile = open("{}/gaps.bed.{}".format(args.splitDir, i),'w')
+        clustFile.write(headerLine)
+        clustFile.write("\n".join([c.line for cl in svClusters[sStart:sEnd] for  c in cl ]))        
+        clustFile.close()
+        sStart = sEnd
+    i=args.split-1
+    clustFile = open("{}/gaps.bed.{}".format(args.splitDir, i),'w')
+    clustFile.write(headerLine)
+    clustFile.write("\n".join([c.line for cl in svClusters[sStart:sEnd] for  c in cl ]))
+    clustFile.close()
+    sys.exit(0)
+        
+ref = pysam.FastaFile(args.ref)
+
+refFaiFile = open(args.ref + ".fai")
+refFai = {l.split()[0]: int(l.split()[1]) for l in refFaiFile}
+readsFofn = open(args.reads)
+bamFiles = [pysam.AlignmentFile(line.rstrip(), 'rb') for line in readsFofn]
 
 if args.count is not None:
     countFile = open(args.count,'w')
@@ -257,7 +315,6 @@ def SpliceTestLine(svs):
             gapPrefix   = ref.fetch(sv.chrom, prefixStart, prefixEnd)
             sem.release()
             spliceSeqs  = [gapPrefix]
-#            print "gap prefix " + gapPrefix
             refPos      = sv.start
         
         if args.mssm:
@@ -281,7 +338,6 @@ def SpliceTestLine(svs):
             
         else:
             if sv.svType == "insertion":
-#                print "appending: " + sv[5]
                 spliceSeqs.append(sv.seq)
                 refPos = sv.start
             else:
@@ -290,12 +346,10 @@ def SpliceTestLine(svs):
 
             if svIndex < len(svs)-1:
                 if refPos > svs[svIndex+1].start:
-                    sys.stderr.write("Ignoring an sv.\n")
-                    sys.stderr.write(str(svs) + "\n")
+                    sys.stderr.write("Ignoring an sv {} {} {}\n".format(svs[svIndex+1].chrom, svs[svIndex+1].start, svs[svIndex+1].end))
                     continue
                 else:
                     between = ref.fetch(sv.chrom, refPos, svs[svIndex+1].start)
-#                    print "between " + between
                     refPos += len(between)
                     spliceSeqs.append(between)
         svIndex +=1
@@ -305,24 +359,31 @@ def SpliceTestLine(svs):
     suffix = ref.fetch(svs[svIndex].chrom, refPos, min(refFai[svs[svIndex].chrom], refPos + args.flank))
     sem.release()
     
-#    print "gap suffix " + suffix
     spliceSeqs.append(suffix)
     dbSeq= ''.join(spliceSeqs)
-#    print str(len(dbSeq))
     refChrom = svs[0].chrom
 
 
     refStart = max(0, svs[0].start - args.flank)
     refEnd   = min(refFai[svs[svIndex].chrom], GetEnd(svs[svIndex]) + args.flank)
-#    print "prefix: " + str(prefixStart) + " " + str(prefixEnd) + " " + str(refStart) + " " + str(refEnd)
+
+    if args.maxSize is not None and refEnd - refStart > args.maxSize:
+        if args.genotypeVcf is None:
+            results="\n".join(["{}:{}-{}\t{}\t{}".format(sv.chrom,sv.start,sv.end,0,0) for sv in svs])
+            return results
+        
+        
     sem.acquire()
     refSeq = ref.fetch(refChrom, refStart, refEnd)
     sem.release()
+    tempFileNames = []
     rFile     = tempfile.NamedTemporaryFile(dir=args.tmpdir, suffix=".fasta", delete=False, mode='w')
+    tempFileNames.append(rFile.name)
     dbFile    = tempfile.NamedTemporaryFile(dir=args.tmpdir, suffix=".fasta", delete=False, mode='w')
+    tempFileNames.append(dbFile.name)
     readsFile = tempfile.NamedTemporaryFile(dir=args.tmpdir, suffix=".fasta", delete=False, mode='w')
+    tempFileNames.append(readsFile.name)
 
-    
     WriteSeq(dbFile, dbSeq, "db")
     WriteSeq(dbFile, refSeq, "re")
     WriteSeq(rFile, refSeq, "re")    
@@ -331,61 +392,121 @@ def SpliceTestLine(svs):
     #
     fetchStart = svs[0].start - args.flank
     fetchEnd   = GetEnd(svs[-1]) + args.flank
-#    print "Fetching " + svs[0][0] + ":" + str(fetchStart) + "-" + str(fetchEnd) + " ref: " + refChrom + ":" + str(refStart) + "-" + str(refEnd) +  " " + str(svs[0][1])
 
-    sem.acquire()
-    for b in range(0,len(bamFiles)):
-        for read in bamFiles[b].fetch(sv.chrom, fetchStart, fetchEnd+1):
-            WriteSeq(readsFile, read.seq, read.query_name)
-    sem.release()
-    readsFile.close()
+    
+    
     dbFile.close()
     rFile.close()
+    nBases = 0
+    if args.genotypeVcf is not None:
+        #
+        # This uses the SNV vcf in the argument to partition reads, and genotype by phase tag.
+        #
+        print "about to start genotyping"
+        dipSamFile = tempfile.NamedTemporaryFile(dir=args.tmpdir, suffix=".dip.sam", delete=False, mode='w')
+        tempFileNames.append(dipSamFile.name)
+        dipSamFile.close()
+        dipHandle = pysam.AlignmentFile(dipSamFile.name, 'wh', header=bamFiles[0].header)
+        sem.acquire()
+        
+        for b in range(0,len(bamFiles)):
+            for read in bamFiles[b].fetch(sv.chrom, fetchStart, fetchEnd+1):
+                dipHandle.write(read)
+        sem.release()
+        #
+        # Now partition the file by haplotype
+        #
+        hap0SamFile = tempfile.NamedTemporaryFile(dir=args.tmpdir, suffix=".hap0.sam", delete=False, mode='w')
+        hap1SamFile = tempfile.NamedTemporaryFile(dir=args.tmpdir, suffix=".hap1.sam", delete=False, mode='w')
+        unassignedSamFile = tempfile.NamedTemporaryFile(dir=args.tmpdir, suffix=".unassigned.sam", delete=False, mode='w')        
+        regionVCF = tempfile.NamedTemporaryFile(dir=args.tmpdir, suffix=".vars.vcf", delete=False, mode='w')
+        tempFileNames += [hap0SamFile.name, hap1SamFile.name, regionVCF.name, unassignedSamFile.name]
+        
+        vcfStart = max(0,svs[0].start - args.flank*10)
+        vcfEnd   = GetEnd(svs[-1]) + args.flank*10
+
+        tabixCommand = "tabix -h {} {}:{}-{}".format(args.genotypeVcf, sv.chrom, vcfStart, vcfEnd)
+        subprocess.call(tabixCommand.split(), stdout=regionVCF)
+        print tabixCommand
+        regionVCF.close()        
+        partitionCommand = "{}/partitionByPhasedSNVs --vcf {} --sam {} --rgn {}:{}-{} --pad 10000 --h1 {} --h2 {} --ref {} --minGenotyped 1 --sample {} --unassigned {}".format("/net/eichler/vol5/home/mchaisso/projects/pbgreedyphase", regionVCF.name, dipSamFile.name, sv.chrom, fetchStart, fetchEnd, hap0SamFile.name, hap1SamFile.name, args.ref, args.sample, unassignedSamFile.name )
+        print partitionCommand
+        subprocess.call(partitionCommand.split())
+
+        sams = [hap0SamFile.name, hap1SamFile.name, unassignedSamFile.name]
+        haps = ["0", "1", "u"]
+        for i in range(0,3):
+
+            samHandle = pysam.AlignmentFile(sams[i], 'r')
+            for read in samHandle.fetch():
+                nBases+=min(read.reference_end, fetchEnd) - max(fetchStart,read.reference_start)                    
+                WriteSeq(readsFile, read.seq, read.query_name + "/" + haps[i])
+    else:
+        sem.acquire()
+        
+        for b in range(0,len(bamFiles)):
+            for read in bamFiles[b].fetch(sv.chrom, fetchStart, fetchEnd+1):
+                nBases+=min(read.reference_end, fetchEnd) - max(fetchStart,read.reference_start)
+                WriteSeq(readsFile, read.seq, read.query_name)
+        sem.release()
+    readsFile.close()
+    
+        
 #    rsFile  = tempfile.NamedTemporaryFile(dir=args.tmpdir, suffix=".sam", delete=False, mode='w')
     dbsFile = tempfile.NamedTemporaryFile(dir=args.tmpdir, suffix=".sam", delete=False, mode='w')
     
     commandOptions = " -sam -bestn 1 -affineOpen 5 -affineExtend 5 -nproc 6 -minAlignLength {} ".format(int(1.5*args.flank))
 
-    dbCommand = "/net/eichler/vol5/home/mchaisso/software/blasr_2/cpp/alignment/bin/blasr {} {} -clipping soft -out {} ".format(readsFile.name, dbFile.name, dbsFile.name) + commandOptions
+    dbCommand = "/net/eichler/vol5/home/mchaisso/software/blasr_2/cpp/alignment/bin/blasr {} {} -preserveReadTitle -clipping soft -out {} ".format(readsFile.name, dbFile.name, dbsFile.name) + commandOptions
 
     dn = open(os.devnull)
-#    subprocess.call(rCommand.split(),stderr=dn)
+    regionLength = fetchEnd - fetchStart
+    coverage = nBases/regionLength
+    sys.stderr.write("coverage: " + str(coverage)+ "\n")
     subprocess.call(dbCommand.split(),stderr=dn)
-    cov = CountRefCoverage(dbsFile.name)
-    if "db" in cov and cov["db"] < 500:
+    if args.genotypeVcf is not None:
+        genotype=True
+    else:
+        genotype=False
+    if coverage < args.maxCoverage:
+        sys.stderr.write("Sufficient coverage " + str(coverage) + "\n")        
+        cov = CountRefCoverage(dbsFile.name, genotype)
+        sys.stderr.write(str(cov) + "\n")
+    else:
+        sys.stderr.write("Skipping event from coverage " + str(coverage) + "\n")
+        cov = { "db": 0, "re": 0}
+    
+    if args.genotypeVcf is False and "db" in cov and cov["db"] < 500:
         print "spliced " + str(len(svs))        
         print "cov:"
         print cov
         print "{}:{}-{}".format(svs[0].chrom,svs[0].start,svs[0].end)
 
-#    rGaps, rGapBases, rReads = CountGaps(rsFile.name, args.flank - 100, len(refSeq) - args.flank+100)
-#    print "db:"
-#    dbGaps, dbGapBases, dbReads = CountGaps(dbsFile.name, args.flank - 100, len(dbSeq) - args.flank+100)
 
-#    rCov,  rReads = CountCoverage(rsFile.name, args.flank - 100, len(refSeq) - args.flank+100)
-#    print "db:"
-#    dbCov, dbReads = CountCoverage(dbsFile.name, args.flank - 100, len(dbSeq) - args.flank+100)
+    cleanup = "/bin/rm " + " ".join(tempFileNames)
 
-    
-#    sys.stderr.write("processed {}:{}-{}\n".format(sv[0],sv[1],sv[2]))
-#    cleanup = "/bin/rm {} {} {} {} {}".format(readsFile.name, rFile.name, dbFile.name, rsFile.name, dbsFile.name)
-    cleanup = "/bin/rm {} {} {} {}".format(readsFile.name, rFile.name, dbFile.name, dbsFile.name)
-
-
-#    do = open(os.devout)
-#    subprocess.call(chkref.split(), stdout=sys.stdout)
     if args.keep is False:
         subprocess.call(cleanup.split())
     else:
         print cleanup
 
-    dbCov = cov["db"]
-    rCov  = cov["re"]
+    if args.genotypeVcf is None:
+        dbCov = cov["db"]
+        rCov  = cov["re"]
     
-    results="\n".join(["{}:{}-{}\t{}\t{}".format(sv.chrom,sv.start,sv.end,dbCov,rCov) for sv in svs])
+        results="\n".join(["{}:{}-{}\t{}\t{}".format(sv.chrom,sv.start,sv.end,dbCov,rCov) for sv in svs])
+    else:
+        results="\n".join(["{}:{}-{}\t{}\t{}\t{}\t{}\t{}\t{}".format(sv.chrom,sv.start,sv.end,\
+                                                                     cov["db"][0],cov["db"][1],cov["db"]['u'],\
+                                                                     cov["re"][0],cov["re"][1],cov["re"]['u'],\
+                                                                     ) for sv in svs])
+        sys.stdout.write(results + "\n")
     return results
 if header is not None:
-    outFile.write("#region\tnAlt\tnRef\n")
+    if args.genotypeVcf is None:
+        outFile.write("#region\tnAlt\tnRef\n")
+    else:
+        outFile.write("#region\tnAltH0\tnAltH1\tnAltUn\tnRefH0\tnRefH1\tnRefUn\n")
 if args.nproc > 1:    
     pool = Pool(args.nproc)
 

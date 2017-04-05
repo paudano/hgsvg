@@ -13,8 +13,9 @@ class Overlap:
             self.bOvp = [int(v[8]), int(v[9])]
 
         self.indel = int(v[10])
-        self.aMidOvp = [int(v[11]), int(v[11])]
-        self.bMidOvp = [int(v[12]), int(v[13])]
+        # Define the middle portion of the overlap, these are the positions in one sequence mapping 10kbp to the end of the other sequence.
+        self.aMidOvp = [int(v[11]), int(v[12])]
+        self.bMidOvp = [int(v[13]), int(v[14])]
 
     def BLength(self):
         return self.bRead[1]-self.bRead[0]
@@ -51,7 +52,7 @@ class Overlap:
             return 0
 
     def Extends(self, wiggle=500):
-        return self.aRead[1] - self.aOvp[1] < wiggle and self.bOvp[0] - self.bRead[0] < wiggle
+        return self.aRead[1] - self.aOvp[1] < wiggle and self.bOvp[0] - self.bRead[0] < wiggle 
 
     def Contained(self, wiggle=500):
         if self.aOvp[0] - self.aRead[0] < wiggle and self.aRead[1] - self.aOvp[1] < wiggle:

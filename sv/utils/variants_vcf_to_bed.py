@@ -8,6 +8,7 @@ ap = argparse.ArgumentParser(description="Transform a variant VCF into a bed fil
 ap.add_argument("--vcf", help="VCF file.", required=True)
 ap.add_argument("--bionano", help="Convert bionano vcf", default=False, action='store_true')
 ap.add_argument("--operation", help="Specifically extract insertions or deletions.",default=None)
+ap.add_argument("--indv", help="Write for this individual", default=None)
 ap.add_argument("--out", help="Output file.", default="/dev/stdout")
 args = ap.parse_args()
 
@@ -42,6 +43,21 @@ for line in vcfFile:
             fieldMatch = fieldVal.match(line)
             if fieldMatch is not None and len(fieldMatch.groups()) > 0:
                 fields.append(fieldMatch.groups()[0])
+        if line[0:6] == "#CHROM" and args.indv is not None:
+            vals    = line.split()
+            samples = vals[9:]
+            sampleIndex= None
+            for s in range(0,len(samples)):
+                if samples[s] == args.indv:
+                    sampleIndex = s
+                    break
+            if sampleIndex is None:
+                print "ERROR. Could not find sample " + args.indv
+                sys.exit(1)
+            
+                
+            
+            
     else:
 
         vals = line.split()
@@ -72,8 +88,13 @@ for line in vcfFile:
                 svType = infokv["SVTYPE"]
             elif "MERGE_TYPE" in infokv:
                 svType = infokv["MERGE_TYPE"]
-            
-            lineVals = [vals[0], str(int(vals[1])-1), str(end), svType, str(svLen), seq]
+            svOp = GetOp(vals[4])
+            if svOp == "deletion":
+                start = vals[1]
+            else:
+                start = str(int(vals[1])-1)
+                
+            lineVals = [vals[0], start, str(end), svType, str(svLen), seq]
         else:
             lineVals = [vals[0], vals[1], infokv["END"], GetOp(vals[4]), str(abs(int(infokv["SVLEN"] ))), vals[5]]
         if args.operation is not None and GetOp(vals[4]) != args.operation:
@@ -107,12 +128,17 @@ for line in vcfFile:
                 header = ["chrom", "tStart", "tEnd", "svType", "svLen", "svSeq"] + fields
             else:
                 header = ["chrom", "tStart", "tEnd", "svType", "svLen", "svQual"] + fields
+
+            if args.indv is not None:
+                header += ["gt"]
             
             outFile.write("#" + "\t".join(header) + "\n")
             madeHeader = True
 
                     
-        lineVals += [ infokv[k] for k in fields ]            
+        lineVals += [ infokv[k] for k in fields ]
+        if args.indv is not None:
+            lineVals += [vals[9+sampleIndex]]
         outFile.write("\t".join(lineVals) + "\n")
 
                 

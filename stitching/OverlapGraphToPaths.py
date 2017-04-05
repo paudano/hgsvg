@@ -127,8 +127,18 @@ def DFSOverlaps(g,n,o,c,d, prevOverlap=None):
         return (c, n)
     depths = [0]*len(adj)
     dest   = [None]*len(adj)
+
     for i in range(0,len(adj)):
         curOverlap = o[g.edge[n][adj[i][1]]['index']]
+        #
+        # If the middle regions of the alignments do not have proper overlap (the prev mid must
+        # end before the cur mid).
+        #
+        import pdb
+        pdb.set_trace()
+        if prevOverlap is not None and prevOverlap.bMidOvp[1] >= curOverlap.aMidOvp[1]:
+            sys.stderr.write("Skipping " + str(curOverlap) + "\n")
+            continue
         points = Overlap.GetOverlapPoints(prevOverlap, curOverlap)
         if points[0] < points[1]:
             if d > 1:
@@ -210,7 +220,6 @@ def StoreLongestPath(g,n,lp,lpd):
     return path
                 
 def LongestPath(g):
-
     ts = nx.topological_sort(g)
     lp = { i: -1 for i in ts }
     lpd = { i: None for i in ts }
@@ -225,8 +234,8 @@ def LongestPath(g):
             longestPathStart = n
             longestPathLength = lp[n]
     path = StoreLongestPath(g, longestPathStart, lp, lpd)
-    print "Stored longest path " + str(longestPathLength) + " stored " + str(len(path))
-    print path
+#    print "Stored longest path " + str(longestPathLength) + " stored " + str(len(path))
+#    print path
     return path
         
     
@@ -337,7 +346,7 @@ for line in overlapFile:
 components = nx.weakly_connected_components(g)
 paths = []
 for comp in components:
-    print "comp " + str(len(comp))    
+
     subgraph = g.subgraph(comp)
 #    greedyPaths=GreedyPaths(subgraph, overlaps)
     longestPath=LongestPath(subgraph)
@@ -351,7 +360,7 @@ for comp in components:
 
 #paths = GreedyPaths(g, overlaps)
 for p in paths:
-    pathFile.write("\t".join(p) + "\n")
+    pathFile.write("\t".join([str(g.node[i]['label']) for i in p]) + "\n")
 
 if args.tgraph is not None:
     nx.write_gml(g, args.tgraph)

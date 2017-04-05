@@ -19,7 +19,6 @@ configfile: "merge.json"
 
 SLOP_FOR_SV_SEQUENCE_POSITIONS = 5000
 
-
 faiFile = open(config['ref']+".fai")
 chroms = [l.split()[0].rstrip() for l in faiFile]
 
@@ -32,7 +31,7 @@ haps=["h0","h1"]
 parents=["fa", "mo"]
 
 allMSSM = [config["mssm-h0"],config["mssm-h1"],config["mssm-dn"]]
-
+fullMSSM={ os.path.basename(f) : f for f in allMSSM}
 allMSSMBase = {f: os.path.basename(f) for f in allMSSM}
 mssmBaseToPath = {os.path.basename(f): f for f in allMSSM}
 sources=["uw","mssm"]
@@ -41,15 +40,17 @@ shortOps=["del","ins"]
 filtered=["uw.bed.filt", "mssm.bed.filt"]
 
 print(config["bionano"])
-print(sources)
+print(allMSSMBase.values())
 rule all:
     input:
-        mssmSort   = expand("{mssm}.sorted",mssm=allMSSM),    
-        mssmBPSupport=expand("{mssm}.cov",mssm=allMSSM),
-        mssmToBN   = expand("{mssm}.to-bn.bed",mssm=mssmBaseToPath.keys()),
-        mssmToUW   = expand("{mssm}.to-uw.bed",mssm=mssmBaseToPath.keys()),
-        mssmToUWFilt = expand("{mssm}.to-uw.bed.filt",mssm=mssmBaseToPath.keys()),
-        mssmBNAnnotation   = expand("{mssm}.to-uw.bed.bn",mssm=mssmBaseToPath.keys()),
+        mssmLocal  = expand("local.{mssm}", mssm=allMSSMBase.values()),
+        mssmUW     = expand("{mssm}.uw",mssm=allMSSMBase.values()),    
+        mssmSort   = expand("{mssm}.sorted",mssm=allMSSMBase.values()),    
+        mssmBPSupport=expand("{mssm}.uw.cov",mssm=allMSSMBase.values()),
+#        mssmToBN   = expand("{mssm}.to-bn.bed",mssm=allMSSMBase.values()),
+#        mssmToUW   = expand("{mssm}.uw.bed",mssm=mssmBaseToPath.keys()),
+        mssmToUWFilt = expand("{mssm}.uw.bed.filt",mssm=allMSSMBase.values()),
+        mssmBNAnnotation   = expand("{mssm}.uw.bed.bn",mssm=allMSSMBase.values()),
         uwBNAnnotation = "uw.bed.bn",
         mergedMSSM = "mssm.bed.filt",
         uwFilt="uw.bed.filt",
@@ -62,9 +63,12 @@ rule all:
         svUWDist=expand("uw.bed.filt.{op}.bed.mssm-dist",op=shortOps),
         mergedCalls=expand("merged.{op}.bed",op=shortOps),
         mergedPreInvBed="sv_calls.pre-inv.bed",
-        clusterCount=[config["uwsv"]+".cluster-count"] + expand("{mssm}.to-uw.bed.cluster-count",mssm=mssmBaseToPath.keys()),
+        clusterCount=[config["uwsv"]+".cluster-count"] + expand("{mssm}.uw.cluster-count",mssm=allMSSMBase.values()),
         clusterSummary="cluster-summary.txt",
         mergedBed="sv_calls.bed",
+        clusteredSVs="cluster-count.tsv",
+        svUWSource="sv_calls.uw-source.bed",
+        svPreSourceCalls="sv_calls.pre-source.bed",
         mergedVCF="sv_calls.vcf",
         mergedVCFgz=expand("{sample}.sv_calls.vcf.gz", sample=config["sample"]),
         mergedBB=expand("{sample}.{op}.bb",sample=config["sample"],op=shortOps),
@@ -78,60 +82,127 @@ rule all:
         bnPlot=expand("BioNano.PacBio.Agreement.{sample}.pdf",sample=config["sample"]),
         plot=config["sample"]+".parental_coverage.pdf",
         inh="inheritance.bed",
-        hethom="het_hom_summary.txt"
+        hethom="het_hom_summary.txt",
+        randomSVs=expand("{sample}.sv_calls.random.bed",sample=config["sample"]),
+        randomSVClusters=expand("{sample}.sv_calls.random.clusters.bed",sample=config["sample"])
+
+rule MakeMSSMLocal:
+    input:
+        mssm=lambda wildcards: fullMSSM[wildcards.mssm]
+    output:
+        local="local.{mssm}"
+    params:
+        sge_opts="-pe serial 1 -l mfree=1G -l h_rt=01:00:00",
+        sn=SNAKEMAKE_DIR
+    shell:"""
+cp -f {input.mssm} {output.local}
+"""
+
         
+rule MakeMSSMUWpre:
+    input:
+        mssm="local.{mssm}"
+    output:
+        mssmUW="{mssm}.uw"
+    params:
+        sge_opts="-pe serial 1 -l mfree=1G -l h_rt=01:00:00",
+        sn=SNAKEMAKE_DIR
+    shell:"""
+{params.sn}/../sv/utils/mssm/MSSMToUW.py {input.mssm} --out {output.mssmUW}
+"""
 
 rule MakeMSSMSort:
     input:
-        mssm="{mssm}"
+        mssm="{mssm}.uw"
     output:
         mssmSorted="{mssm}.sorted"
     params:
         sge_opts="-pe serial 1 -l mfree=1G -l h_rt=01:00:00"
-    shell:
-        "module unload anaconda; module load python/2.7.3; module load bedtools/latest; bedtools sort -i {input.mssm} | awk '{{ if ($3-$2 >= 50) print;}}' > {output.mssmSorted}"
+    shell:"""
+module unload anaconda; module unload python/3.5.2; module load python/2.7.3; module load bedtools/latest; bedtools sort -header -i {input.mssm} | awk '{{ if (substr($0,0,1) == "#" || ($3-$2 >= 50 && $3-$2 < 500000)) print;}}' > {output.mssmSorted}
+"""
+
+rule SplitMSSM:
+    input:
+        mssm="{mssm}.sorted"
+    output:
+        split=dynamic("{mssm}.sorted.split/gaps.bed.{id}")
+    params:
+        sge_opts="-pe serial 8 -l mfree=1G -l h_rt=04:00:00",
+        sd=SNAKEMAKE_DIR,
+        n=config["n"]
+    shell:"""
+module unload anaconda; module unload python/3.5.2; module load python/2.7.3; mkdir -p {wildcards.mssm}.sorted.split; {params.sd}/../sv/utils/SpliceVariantsAndCoverageValidate.py --gaps {input.mssm} --split {params.n} --splitDir {wildcards.mssm}.sorted.split --tmpdir $TMPDIR
+"""
         
+    
 rule MakeMSSMSupport:
     input:
-        mssm="{mssm}.sorted",
+        mssm="{mssm}.sorted.split/gaps.bed.{id}",
         reads=config["reads"]
     output:
-        cov="{mssm}.cov"
+        cov="{mssm}.sorted.split/gaps_sup.{id}.cov"
     params:
         sge_opts="-pe serial 8 -l mfree=1G -l h_rt=04:00:00",
         ref=config["ref"]
     shell:
-        "module unload anaconda; module load python/2.7.3; "+SNAKEMAKE_DIR+"/../sv/utils/SpliceVariantsAndCoverageValidate.py --mssm --gaps {input.mssm} --reads {input.reads} --out {output.cov} --nproc 12 --ref {params.ref}"
+        "module unload anaconda; module load python/2.7.3; "+SNAKEMAKE_DIR+"/../sv/utils/SpliceVariantsAndCoverageValidate.py  --gaps {input.mssm} --reads {input.reads} --out {output.cov} --nproc 12 --ref {params.ref} --tmpdir $TMPDIR --maxSize 200000"
 
-rule MakeMSSMBN:
+rule CombineMSSMTables:
     input:
-        mssm=lambda wildcards: mssmBaseToPath[wildcards.base] +".sorted"
+        mssmGaps="{mssm}.sorted.split/gaps.bed.{id}",    
+        mssmCov="{mssm}.sorted.split/gaps_sup.{id}.cov",
     output:
-        mssmBN="{base}.to-bn.bed"
+        mssmComb="{mssm}.sorted.split/gaps_cov.{id}",    
     params:
-        sge_opts=config["sge_small"]
+        sge_opts="-pe serial 1 -l mfree=1G -l h_rt=01:00:00",
+        ref=config["ref"]
     shell:
-        "module unload anaconda && module load python/2.7.3 && ~/projects/HGSVG/hgsvg/sv/utils/mssm/MSSMToUW.py {input.mssm} --keepCoordinates > {output.mssmBN} "
-       
-   
-rule MakeMSSMUW:
+        "paste {input.mssmGaps} {input.mssmCov} > {output.mssmComb}"
+
+rule MergeMSSMSupport:
     input:
-        mssm=lambda wildcards: mssmBaseToPath[wildcards.base] + ".sorted"
+        mssmComb=dynamic("{mssm}.sorted.split/gaps_cov.{id}"),    
     output:
-        mssmBN="{base}.to-uw.bed"
+        cov="{mssm}.uw.cov"
     params:
-        sge_opts=config["sge_small"]
-    shell:
-        "module unload anaconda && module load python/2.7.3 && ~/projects/HGSVG/hgsvg/sv/utils/mssm/MSSMToUW.py {input.mssm} > {output.mssmBN} "
+        sge_opts="-pe serial 8 -l mfree=1G -l h_rt=01:00:00",
+        ref=config["ref"]
+    shell:"""
+head -1 {wildcards.mssm}.sorted.split/gaps_cov.0 > {output.cov}
+grep -hv "^#" {input.mssmComb} | sed '/^$/d' | bedtools sort > {output.cov}
+"""
+ 
 
-
+#rule MakeMSSMBN:
+#    input:
+#        mssm="{mssm}.sorted"
+#    output:
+#        mssmBN="{mssm}.to-bn.bed"
+#    params:
+#        sge_opts=config["sge_small"]
+#    shell:
+#        "module unload anaconda && module load python/2.7.3 && ~/projects/HGSVG/hgsvg/sv/utils/mssm/MSSMToUW.py {input.mssm} --keepCoordinates > {output.mssmBN} "
+#       
+#   
+#rule MakeMSSMUW:
+#    input:
+#        mssm=lambda wildcards: mssmBaseToPath[wildcards.base] + ".sorted"
+#    output:
+#        mssmBN="{base}.uw.bed"
+#    params:
+#        sge_opts=config["sge_small"]
+#    shell:
+#        "module unload anaconda && module load python/2.7.3 && ~/projects/HGSVG/hgsvg/sv/utils/mssm/MSSMToUW.py {input.mssm} > {output.mssmBN} "
+#
+#
 
 rule MakeMSSMBNAnnotation:
     input:
-        mssm="{base}.to-uw.bed",
+        mssm="{base}.uw",
         bionano=config["bionano"]
     output:
-        mssmBN="{base}.to-uw.bed.bn"
+        mssmBN="{base}.uw.bed.bn"
     params:
         sge_opts=config["sge_small"],
         maxRatio=config["maxRatio"]
@@ -152,14 +223,14 @@ rule MakeUWAnnotation:
         "~/projects/HGSVG/hgsvg/sv/utils/mssm/AnnotateBedWithBioNano.py --bionano {input.bionano} --table {input.uw} --out {output.uwBN} --source UW --maxRatio {params.maxRatio}"
 
 
-    
+
 rule FilterCallsByPBAndBNSupportMSSM:
     input:
         mssmCov=lambda wildcards: mssmBaseToPath[wildcards.base] + ".cov",
-        mssmToUW="{base}.to-uw.bed",
-        mssmToUWBN="{base}.to-uw.bed.bn"
+        mssmToUW="{base}.uw",
+        mssmToUWBN="{base}.uw.bed.bn"
     output:
-        filtMSSM="{base}.to-uw.bed.filt"
+        filtMSSM="{base}.uw.bed.filt"
     params:
         sge_opts=config["sge_small"],
         minPbSupport=config["pbSupport"]
@@ -172,9 +243,9 @@ rule FilterCallsByPBAndBNSupportMSSM:
 
 rule MergeMSSMHaplotypes:
     input:
-        mssmh1 = expand("{mssm}.hap1.bed.to-uw.bed.filt",mssm=config["sample"]),
-        mssmh2 = expand("{mssm}.hap2.bed.to-uw.bed.filt",mssm=config["sample"]),
-        mssmdn = expand("{mssm}.remainingdenovos.bed.to-uw.bed.filt",mssm=config["sample"])
+        mssmh1 = expand("{mssm}.hap1.bed.uw.bed.filt",mssm=config["sample"]),
+        mssmh2 = expand("{mssm}.hap2.bed.uw.bed.filt",mssm=config["sample"]),
+        mssmdn = expand("{mssm}.remainingdenovos.bed.uw.bed.filt",mssm=config["sample"])
     output:
         mssmMerged = "mssm.bed.filt"
     params:
@@ -266,13 +337,13 @@ rule CountSpliceClusters:
         ref=config["ref"],
         bams=config["reads"],
     shell:
-        "{SNAKEMAKE_DIR}/../sv/utils/SpliceVariantsAndCoverageValidate.py --gaps {input.sv} --ref {params.ref} --reads {params.bams} --window 250 --flank 1000 --count {output.svClusters}"
+        "{SNAKEMAKE_DIR}/../sv/utils/SpliceVariantsAndCoverageValidate.py --gaps {input.sv} --ref {params.ref} --reads {params.bams} --window 250 --flank 1000 --count {output.svClusters} --tmpdir $TMPDIR"
 
 
 rule SummarizePacBioCovValidation:
     input:
-        clusterCount=expand("{uw}.cluster-count", uw=config["uwsv"]) + expand("{mssm}.to-uw.bed.cluster-count",mssm=mssmBaseToPath.keys()),
-        mssmCov=expand("{mssm}.to-uw.bed.cov",mssm=mssmBaseToPath.keys()),
+        clusterCount=expand("{uw}.cluster-count", uw=config["uwsv"]) + expand("{mssm}.uw.cluster-count",mssm=allMSSMBase.values()),
+        mssmCov=expand("{mssm}.uw.cov",mssm=allMSSMBase.values()),
         uw=config["uwsv"]
     output:
         clusterSummary="cluster-summary.txt",
@@ -287,19 +358,19 @@ nUWClust=`wc -l {params.uw}.cluster-count | awk '{{ print $1;}}' | awk '{{ print
 nUWPass=`cat {params.uw} | bioawk -c hdr '{{ if ($nAlt > {params.minPbSupport}) print;}}' | wc -l`
 echo -e "UW\t$nUW\t$nUWClust\t$nUWPass" > {output.clusterSummary}
 
-nMSSMH1=`wc -l {params.sample}.hap1.bed.to-uw.bed | awk '{{ print $1;}}'`
-nMSSMH1Clust=`wc -l {params.sample}.hap1.bed.to-uw.bed.cluster-count | awk '{{ print $1;}}'`
-nMSSMH1Pass=`cat {params.sample}.hap1.bed.to-uw.bed.cov | bioawk -c hdr '{{ if ($nAlt > {params.minPbSupport}) print;}}' | wc -l`    
+nMSSMH1=`wc -l {params.sample}.hap1.bed.uw.bed | awk '{{ print $1;}}'`
+nMSSMH1Clust=`wc -l {params.sample}.hap1.bed.uw.cluster-count | awk '{{ print $1;}}'`
+nMSSMH1Pass=`cat {params.sample}.hap1.bed.uw.cov | bioawk -c hdr '{{ if ($nAlt > {params.minPbSupport}) print;}}' | wc -l`    
 echo -e "MSSMh1\t$nMSSMH1\t$nMSSMH1Clust\t$nMSSMH1Pass" >> {output.clusterSummary}
 
-nMSSMH2=`wc -l {params.sample}.hap2.bed.to-uw.bed | awk '{{ print $1;}}'`
-nMSSMH2Clust=`wc -l {params.sample}.hap2.bed.to-uw.bed.cluster-count | awk '{{ print $1;}}' `
-nMSSMH2Pass=`cat {params.sample}.hap2.bed.to-uw.bed.cov | bioawk -c hdr '{{ if ($nAlt > {params.minPbSupport}) print;}}' | wc -l`            
+nMSSMH2=`wc -l {params.sample}.hap2.bed.uw.bed | awk '{{ print $1;}}'`
+nMSSMH2Clust=`wc -l {params.sample}.hap2.bed.uw.cluster-count | awk '{{ print $1;}}' `
+nMSSMH2Pass=`cat {params.sample}.hap2.bed.uw.cov | bioawk -c hdr '{{ if ($nAlt > {params.minPbSupport}) print;}}' | wc -l`            
 echo -e "MSSMh2\t$nMSSMH2\t$nMSSMH2Clust\t$nMSSMH2Pass" >> {output.clusterSummary}
 
-nMSSMDN=`wc -l {params.sample}.remainingdenovos.bed.to-uw.bed | awk '{{ print $1;}}' `
-nMSSMDNClust=`wc -l {params.sample}.remainingdenovos.bed.to-uw.bed.cluster-count | awk '{{ print $1;}}' `
-nMSSMDNPass=`cat {params.sample}.remainingdenovos.bed.to-uw.bed.cov | bioawk -c hdr '{{ if ($nAlt > {params.minPbSupport}) print;}}' | wc -l`
+nMSSMDN=`wc -l {params.sample}.remainingdenovos.bed.uw.bed | awk '{{ print $1;}}' `
+nMSSMDNClust=`wc -l {params.sample}.remainingdenovos.bed.uw.cluster-count | awk '{{ print $1;}}' `
+nMSSMDNPass=`cat {params.sample}.remainingdenovos.bed.uw.cov | bioawk -c hdr '{{ if ($nAlt > {params.minPbSupport}) print;}}' | wc -l`
 echo -e "MSSMDN\t$nMSSMDN\t$nMSSMDNClust\t$nMSSMDNPass" >> {output.clusterSummary}
 """
 
@@ -481,8 +552,11 @@ rule CombineMergedToPreInv:
     shell:"""
 module load numpy/1.11.0    
 module load pandas
-head -1 merged.ins.bed > {output.mergedBed}
-cat {input.merged} | grep -v "^#" | awk '{{ if ($3-$2 >= 50) print; }}' | bedtools sort >> {output.mergedBed}
+head -1 merged.ins.bed > {output.mergedBed}.tmp
+cat {input.merged} | grep -v "^#" | awk '{{ if ($3-$2 >= 50) print; }}' | bedtools sort >> {output.mergedBed}.tmp
+nf=`head -1 {output.mergedBed}.tmp | awk '{{ print NF;}}'`
+bedtools groupby -header -g 1-6 -i {output.mergedBed}.tmp -c 1 -o first -full | cut -f 1-$nf > {output.mergedBed}
+rm -f {output.mergedBed}.tmp
 """
 
 rule ExcludeEventsOverlappingInversions:
@@ -490,11 +564,59 @@ rule ExcludeEventsOverlappingInversions:
         preInv="sv_calls.pre-inv.bed",
         invHaps="inversions.bed"
     output:
-        svCalls="sv_calls.bed"
+        svCalls="sv_calls.pre-source.bed"
     params:
         sge_opts=config["sge_small"],
     shell:
         "bedtools intersect -header -v -a {input.preInv} -b {input.invHaps} > {output.svCalls}"
+
+
+rule AddUWSource:
+    input:
+        svCalls="sv_calls.pre-source.bed",
+    output:
+        svSource="sv_calls.uw-source.bed"
+    params:
+        sge_opts=config["sge_small"],
+        stitching =[ config["svqc"] + "/hap0/gaps.recalled.sorted",\
+                     config["svqc"] + "/hap1/gaps.recalled.sorted"],
+        fillin    =[ config["fillin"] + "/hap0/gaps.bed.recalled.sorted",
+                     config["fillin"] + "/hap1/gaps.bed.recalled.sorted"],
+        stitchingFai = [config["stitchingFai"] + "contigs.h0.fasta.fai", \
+                        config["stitchingFai"] + "contigs.h1.fasta.fai" ],
+        fillInFai =[ config["fillInFai"] + "alignments.h0.bam.fasta.fai", \
+                     config["fillInFai"] + "alignments.h1.bam.fasta.fai" ]
+    shell:"""
+{SNAKEMAKE_DIR}/../sv/utils/AddOriginalHaplotype.py --sv {input.svCalls} --stitching {params.stitching} --fillin {params.fillin} --out {output.svSource} --stitchingFai {params.stitchingFai} --fillInFai {params.fillInFai}
+"""
+
+
+rule CountClusters:
+    input:
+        svUWSource="sv_calls.uw-source.bed",
+    output:
+        clusteredSVs="cluster-count.tsv",
+    params:
+        sge_opts=config["sge_small"],
+    shell:"""
+{SNAKEMAKE_DIR}/../sv/utils/PrintSVClusters.py --gaps {input.svUWSource} --window 500 --out {output.clusteredSVs}
+"""
+    
+rule AddMSSMSource:
+    input:
+        svUWSource="sv_calls.uw-source.bed",
+        clusteredSVs="cluster-count.tsv",
+    output:
+        svMSSMSource="sv_calls.bed"
+    params:
+        sge_opts=config["sge_small"],
+        mspac=config["mspac"]
+    shell:"""
+{SNAKEMAKE_DIR}/../sv/utils/AddMsPACSeq.py --sv {input.svUWSource} --mspac {params.mspac} --out {output.svMSSMSource}.tmp
+paste {output.svMSSMSource}.tmp {input.clusteredSVs} > {output.svMSSMSource}
+rm -f {output.svMSSMSource}.tmp
+"""
+                    
 
 rule CombineMergedToVCF:
     input:
@@ -510,7 +632,7 @@ rule CombineMergedToVCF:
 module load numpy/1.11.0    
 module load pandas
 
-{SNAKEMAKE_DIR}/../sv/utils/variants_bed_to_vcf.py --bed {input.svCalls} --reference {params.ref} --vcf {output.mergedVCF} --sample {params.sample} --type sv --fields NALT nAlt NREF nRef SVANN svAnn SVREP svRep SVCLASS svClass NTR nTR BN bnKey SOURCE source
+{SNAKEMAKE_DIR}/../sv/utils/variants_bed_to_vcf.py --bed {input.svCalls} --reference {params.ref} --vcf /dev/stdout  --sample {params.sample} --type sv --fields NALT nAlt NREF nRef SVANN svAnn SVREP svRep SVCLASS svClass NTR nTR BN bnKey SOURCE source --source PHASED-SV --info \"##INFO=<ID=NALT,Number=1,Type=Integer,Description=\\\"Number of reads supporting variant\\\">" "##INFO=<ID=NREF,Number=1,Type=Integer,Description=\\\"Number of reads supporting reference\\\">" "##INFO=<ID=SVANN,Number=1,Type=String,Description=\\\"Repeat annotation of variant\\\">" "##INFO=<ID=SVREP,Number=1,Type=Float,Description=\\\"Fraction of SV annotated as mobile element or tandem repeat\\\">"  "##INFO=<ID=SVCLASS,Number=1,Type=String,Description=\\\"General repeat class of variant\\\">"  "##INFO=<ID=NTR,Number=1,Type=Integer,Description=\\\"Number of tandem repeat bases\\\">"  "##INFO=<ID=BN,Number=1,Type=Float,Description=\\\"Overlap with BioNanoGenomics call.\\\">"  "##INFO=<ID=SOURCE,Number=1,Type=String,Description=\\\"Source method of call, with additional information describing haplotype.\\\">" | bedtools sort -header > {output.mergedVCF}
 
 bgzip -c {output.mergedVCF} > {output.mergedVCFgz}
 tabix {output.mergedVCFgz}
@@ -675,3 +797,26 @@ rule MakeBNPlots:
     shell:
         "module load R/latest; Rscript {SNAKEMAKE_DIR}/../plotting/plot_bionano.R --pbsv sv_calls.bed.by-pb.bn.bed --bndel sv_calls.bed.del.bn.bed --bnins sv_calls.bed.ins.bn.bed --sample {params.sample}"
         
+
+rule SelectRandomSVs:
+    input:
+        svs="sv_calls.bed",
+    output:
+        randomSVs=expand("{sample}.sv_calls.random.bed", sample=config["sample"])
+    params:
+        sge_opts="-pe serial 1 -l mfree=1G -l h_rt=01:00:00",
+    shell:"""
+cat sv_calls.bed | bioawk -c hdr  '{{ print $_chrom"\\t" $tStart"\\t" $tEnd"\\t" $svType "\\t"$svLen"\\t" NR-1;}}' | grep -v "#" |  shuf | head -1000 > {output.randomSVs}
+"""
+
+rule SelectRandomClusters:
+    input:
+        svs="sv_calls.bed",
+    output:        
+        randomSVClusters=expand("{sample}.sv_calls.random.clusters.bed",sample=config["sample"])
+    params:
+        sge_opts="-pe serial 1 -l mfree=1G -l h_rt=01:00:00",
+    shell:"""
+~/projects/HGSVG/hgsvg/merging/SelectRandomClusters.py --bed sv_calls.bed --n 1000 --out {output.randomSVClusters}
+"""
+

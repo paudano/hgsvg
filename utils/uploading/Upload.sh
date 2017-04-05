@@ -13,4 +13,4 @@ while test $# -gt 0;
 		 echo $ts	$PWD $1 >> /net/eichler/vol24/projects/structural_variation/nobackups/projects/HGSVG/Uploads/upload_log.txt
 shift
 done
-
+echo "Please notify igsr-dcc@ebi.ac.uk of the upload."

@@ -62,41 +62,43 @@ $(DIR)/hap1/indels.bed: $(ALIGNMENTS)
 $(DIR)/diploid/indels.bed: $(DIR)/hap0/indels.bed $(DIR)/hap1/indels.bed
 	-mkdir -p $(DIR)/diploid
 	# Unfortunately must handle insertions and deletions separately
-	grep insertion $(DIR)/hap0/indels.bed > $(DIR)/hap0/indels.insertions.bed
-	grep insertion $(DIR)/hap1/indels.bed > $(DIR)/hap1/indels.insertions.bed
-	bedtools intersect -a $(DIR)/hap0/indels.insertions.bed -b $(DIR)/hap1/indels.insertions.bed -r -f 0.5 -wao | \
-    awk '{ if ($$12 != ".") print; }' | \
+	egrep "^#|insertion" $(DIR)/hap0/indels.bed > $(DIR)/hap0/indels.insertions.bed
+	egrep "^#|insertion" $(DIR)/hap1/indels.bed > $(DIR)/hap1/indels.insertions.bed
+	bedtools intersect -header -a $(DIR)/hap0/indels.insertions.bed -b $(DIR)/hap1/indels.insertions.bed -r -f 0.5 -wao | \
+    awk '{ if (substr($$0,0,1) == "#" || $$12 != ".") print; }' | \
     cut -f 1-10 | \
-    bedtools groupby -c 4 -o first -full > $(DIR)/diploid/indels.insertions.0.r.bed
-	bedtools intersect -b $(DIR)/hap0/indels.insertions.bed -a $(DIR)/hap1/indels.insertions.bed -r -f 0.5 -wao | \
-    awk '{ if ($$12 != ".") print; }' | \
+    bedtools groupby -header -c 4 -o first -full > $(DIR)/diploid/indels.insertions.0.r.bed
+	bedtools intersect -header -b $(DIR)/hap0/indels.insertions.bed -a $(DIR)/hap1/indels.insertions.bed -r -f 0.5 -wao | \
+    awk '{ if (substr($$0,0,1) == "#" ||$$12 != ".") print; }' | \
     cut -f 1-10 | \
-    bedtools groupby -c 4 -o first -full > $(DIR)/diploid/indels.insertions.1.r.bed
-	bedtools intersect -v -a $(DIR)/hap0/indels.insertions.bed -b $(DIR)/diploid/indels.insertions.0.r.bed -r -f 1.0 > $(DIR)/diploid/indels.insertions.h0.bed
-	bedtools intersect -v -a $(DIR)/hap1/indels.insertions.bed -b $(DIR)/diploid/indels.insertions.1.r.bed -r -f 1.0 > $(DIR)/diploid/indels.insertions.h1.bed
+    bedtools groupby -header -c 4 -o first -full > $(DIR)/diploid/indels.insertions.1.r.bed
+	bedtools intersect -header -v -a $(DIR)/hap0/indels.insertions.bed -b $(DIR)/diploid/indels.insertions.0.r.bed -r -f 1.0 > $(DIR)/diploid/indels.insertions.h0.bed
+	bedtools intersect -header -v -a $(DIR)/hap1/indels.insertions.bed -b $(DIR)/diploid/indels.insertions.1.r.bed -r -f 1.0 > $(DIR)/diploid/indels.insertions.h1.bed
 	cp $(DIR)/diploid/indels.insertions.0.r.bed $(DIR)/diploid/indels.insertions.hom.bed
 
 	# deletions
-	grep deletion $(DIR)/hap0/indels.bed > $(DIR)/hap0/indels.deletions.bed
-	grep deletion $(DIR)/hap1/indels.bed > $(DIR)/hap1/indels.deletions.bed
-	bedtools intersect -a $(DIR)/hap0/indels.deletions.bed -b $(DIR)/hap1/indels.deletions.bed -r -f 0.5 -wao | \
-    awk '{ if ($$12 != ".") print; }' | \
+	egrep "^#|deletion" $(DIR)/hap0/indels.bed > $(DIR)/hap0/indels.deletions.bed
+	egrep "^#|deletion" $(DIR)/hap1/indels.bed > $(DIR)/hap1/indels.deletions.bed
+	bedtools intersect -header -a $(DIR)/hap0/indels.deletions.bed -b $(DIR)/hap1/indels.deletions.bed -r -f 0.5 -wao | \
+    awk '{ if (substr($$0,0,1) == "#" || $$12 != ".") print; }' | \
     cut -f 1-10 | \
-    bedtools groupby -c 4 -o first -full > $(DIR)/diploid/indels.deletions.0.r.bed
-	bedtools intersect -b $(DIR)/hap0/indels.deletions.bed -a $(DIR)/hap1/indels.deletions.bed -r -f 0.5 -wao | \
-    awk '{ if ($$12 != ".") print; }' | \
+    bedtools groupby -header -c 4 -o first -full > $(DIR)/diploid/indels.deletions.0.r.bed
+	bedtools intersect -header -b $(DIR)/hap0/indels.deletions.bed -a $(DIR)/hap1/indels.deletions.bed -r -f 0.5 -wao | \
+    awk '{ if (substr($$0,0,1) == "#" || $$12 != ".") print; }' | \
     cut -f 1-10 | \
     bedtools groupby -c 4 -o first -full > $(DIR)/diploid/indels.deletions.1.r.bed
-	bedtools intersect -v -a $(DIR)/hap0/indels.deletions.bed -b $(DIR)/diploid/indels.deletions.0.r.bed -r -f 1.0 > $(DIR)/diploid/indels.deletions.h0.bed
-	bedtools intersect -v -a $(DIR)/hap1/indels.deletions.bed -b $(DIR)/diploid/indels.deletions.1.r.bed -r -f 1.0 > $(DIR)/diploid/indels.deletions.h1.bed
+	bedtools intersect -header -v -a $(DIR)/hap0/indels.deletions.bed -b $(DIR)/diploid/indels.deletions.0.r.bed -r -f 1.0 > $(DIR)/diploid/indels.deletions.h0.bed
+	bedtools intersect -header -v -a $(DIR)/hap1/indels.deletions.bed -b $(DIR)/diploid/indels.deletions.1.r.bed -r -f 1.0 > $(DIR)/diploid/indels.deletions.h1.bed
 	cp $(DIR)/diploid/indels.deletions.0.r.bed $(DIR)/diploid/indels.deletions.hom.bed
 
 	cat $(DIR)/diploid/indels.insertions.h0.bed | awk '{ print $$0"\tHAP0";}' > $@
-	cat $(DIR)/diploid/indels.insertions.h1.bed | awk '{ print $$0"\tHAP1";}' >> $@
-	cat $(DIR)/diploid/indels.insertions.hom.bed | awk '{ print $$0"\tHOM";}' >> $@
-	cat $(DIR)/diploid/indels.deletions.h0.bed | awk '{ print $$0"\tHAP0";}' >> $@
-	cat $(DIR)/diploid/indels.deletions.h1.bed | awk '{ print $$0"\tHAP1";}' >> $@
-	cat $(DIR)/diploid/indels.deletions.hom.bed | awk '{ print $$0"\tHOM";}' >> $@
+	grep -v "^#" $(DIR)/diploid/indels.insertions.h1.bed | awk '{ print $$0"\tHAP1";}' >> $@
+	grep -v "^#" $(DIR)/diploid/indels.insertions.hom.bed | awk '{ print $$0"\tHOM";}' >> $@
+	grep -v "^#" $(DIR)/diploid/indels.deletions.h0.bed | awk '{ print $$0"\tHAP0";}' >> $@
+	grep -v "^#" $(DIR)/diploid/indels.deletions.h1.bed | awk '{ print $$0"\tHAP1";}' >> $@
+	grep -v "^#" $(DIR)/diploid/indels.deletions.hom.bed | awk '{ print $$0"\tHOM";}' >> $@
+	bedtools sort -header -i $@ > $@.tmp
+	mv -f $@.tmp $@
 
 
 $(DIR)/diploid/indels.vcf: $(DIR)/diploid/indels.bed
@@ -104,10 +106,10 @@ $(DIR)/diploid/indels.vcf: $(DIR)/diploid/indels.bed
 
 
 $(DIR)/diploid/deletions.bed: $(DIR)/hap0/deletions.bed $(DIR)/hap1/deletions.bed
-	$(HGSVG)/sv/utils/MergeHaplotypes.sh $(DIR)/hap0/deletions.bed $(DIR)/hap1/deletions.bed $@ svType svLen svSeq qName qStart qEnd
+	$(HGSVG)/sv/utils/MergeHaplotypes.sh $(DIR)/hap0/deletions.bed $(DIR)/hap1/deletions.bed $@ "svType svLen svSeq qName qStart qEnd"
 
 $(DIR)/diploid/insertions.bed: $(DIR)/hap0/insertions.bed $(DIR)/hap1/insertions.bed
-	$(HGSVG)/sv/utils/MergeHaplotypes.sh $(DIR)/hap0/insertions.bed $(DIR)/hap1/insertions.bed $@ svType svLen svSeq qName qStart qEnd
+	$(HGSVG)/sv/utils/MergeHaplotypes.sh $(DIR)/hap0/insertions.bed $(DIR)/hap1/insertions.bed $@ "svType svLen svSeq qName qStart qEnd"
 
 $(DIR)/diploid/insertion/NONE.bed: $(DIR)/diploid/insertions.bed
 	-mkdir -p $(DIR)/diploid/insertion

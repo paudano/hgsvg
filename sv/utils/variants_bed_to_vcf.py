@@ -20,6 +20,9 @@ def GetGenotype(gt):
         return "0|1"
     elif gt == "HOM":
         return "1|1"
+    elif gt == "HET":
+        # unphased
+        return "1/0"
     else:
         # assume unphased homozygous
         return "1/1"
@@ -27,7 +30,7 @@ def GetGenotype(gt):
 
 def GetStart(row):
     if row["svType"] == "insertion":
-        return row["tStart"] + 1
+        return row["tStart"]
     else:
         # deletion, gives last ref base before event.
         return row["tStart"]
@@ -53,7 +56,7 @@ def GetSeq(val):
 def GetAltSeq(row, genome):
     seq = GetSeq(row["svSeq"])
     if row["svType"] == "insertion":
-        refPrefix = genome.fetch(row["#chrom"], row["origTStart"], row["origTStart"]+1).upper()                
+        refPrefix = genome.fetch(row["#chrom"], row["origTStart"]-1, row["origTStart"]).upper()
         return refPrefix + seq.upper()
     else:
         refPrefix = genome.fetch(row["#chrom"], row["origTStart"]-1, row["origTStart"]).upper()        
@@ -68,12 +71,12 @@ def GetSVLen(row):
 def GetRefSeq(row, genome, oneBase=False):
     refLen = 1;
     refPos = row["origTStart"]
-    
     if row["svType"] == "deletion":
         if oneBase == False:
             refLen = row["svLen"] + 1
         # deletion sequence starts at base before del event
-        refPos-=1
+    refPos-=1
+
     seq = genome.fetch(row["#chrom"], refPos, refPos + refLen).upper()
     return seq
 
@@ -125,12 +128,22 @@ def convert_bed_to_vcf(bed_filename, reference_filename, vcf_filename, sample, v
     calls["CHROM"]  = calls["#chrom"]
 
     calls["POS"] = calls.apply(lambda row: GetStart(row), axis=1)
+    if args.addci is not None:
+        calls["CIPOS"] = ["-{},{}".format(args.addci, args.addci)]*len(calls)
+        calls["CIEND"] = ["-{},{}".format(args.addci, args.addci)]*len(calls)        
     # Build an INFO field for each call.
     calls["svShort"] = calls.apply(lambda row: GetType(row["svType"]), axis=1)
     
+
     
     if variant_type == "sv":
         infoKeys= [("END", "tEnd"),("SVTYPE", "svShort"),("SVLEN", "svLen"),("CONTIG", "qName"),("CONTIG_START", "qStart"),("CONTIG_END", "qEnd"),("SEQ", "svSeq")]
+        if "is_trf" in calls:
+            infoKeys.append(("IS_TRF", "is_trf"))
+
+        if args.addci is not None:
+            infoKeys.append(("CIEND", "CIEND"))
+            infoKeys.append(("CIPOS","CIPOS"))
         
         if len(args.fields) > 0:
             extraKeys = [(args.fields[i], args.fields[i+1]) for i in range(0,len(args.fields),2)]
@@ -161,7 +174,7 @@ def convert_bed_to_vcf(bed_filename, reference_filename, vcf_filename, sample, v
             calls["genotype"] = calls.apply(lambda row: GetGenotype(row.hap), axis=1)
         else:
             calls["genotype"] = ["./."]* len(calls["tEnd"])
-        
+        calls["svLen"] =  calls.apply(lambda row: GetSVLen(row), axis=1)        
         calls["info"] = calls.apply(
             lambda row: ";".join(
                 ["=".join(map(str, item))
@@ -192,6 +205,12 @@ def convert_bed_to_vcf(bed_filename, reference_filename, vcf_filename, sample, v
 
     simple_calls = calls[["#chrom", "POS", "call_id", "reference", "alt", "quality", "filter", "info", "format", "genotype"]].rename_axis({"#chrom": "#CHROM", "reference": "REF", "call_id": "ID", "quality": "QUAL", "info": "INFO", "alt": "ALT", "filter": "FILTER", "format":"FORMAT", "genotype": sample}, axis=1)
 
+    faiFile = open(args.reference + ".fai")
+    fai = []
+    for line in faiFile:
+        vals = line.split()
+        fai.append([vals[0], vals[1]])
+        
     # Save genotypes as tab-delimited file.
     with open(vcf_filename, "w") as vcf:
         vcf.write("##fileformat=VCFv4.2\n")
@@ -204,6 +223,9 @@ def convert_bed_to_vcf(bed_filename, reference_filename, vcf_filename, sample, v
         vcf.write('##INFO=<ID=CONTIG_START,Number=1,Type=Integer,Description="Start coordinate of this variant in the alternate assembly contig">' + "\n")
         vcf.write('##INFO=<ID=CONTIG_END,Number=1,Type=Integer,Description="End coordinate of this variant in the alternate assembly contig">' + "\n")
         vcf.write('##INFO=<ID=SEQ,Number=1,Type=String,Description="Sequence associated with variant">' + "\n")
+        for i in range(0,len(fai)):
+            vcf.write("##contig=<ID={},length={}>".format(fai[i][0], fai[i][1]) + "\n")
+        vcf.write("##SAMPLE=<ID={}>\n".format(args.sample))
         vcf.write('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">' + "\n")
         if args.info is not None:
             vcf.write("\n".join(args.info)+"\n")
@@ -219,7 +241,8 @@ if __name__ == "__main__":
     parser.add_argument("--type", help="variant call type", choices=("sv", "indel", "inversion"))
     parser.add_argument("--fields", help="Additional  fields to add", nargs="+", default=[])
     parser.add_argument("--info", help="Additional info descriptions to match fields.", default=None, nargs="+")    
-    parser.add_argument("--source", help="Source of variants file.", default="SMRT_SV")
+    parser.add_argument("--source", help="Source of variants file.", default="SMRT_SV"),
+    parser.add_argument("--addci", help="Add CIPOS=-v,v;CIEND=-v,v where v is the parameter value", default=None,type=int)
     args = parser.parse_args()
 
     convert_bed_to_vcf(args.bed, args.reference, args.vcf, args.sample, args.type)

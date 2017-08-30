@@ -9,6 +9,14 @@ ap.add_argument("--vcf", help="VCF file.", required=True)
 ap.add_argument("--bionano", help="Convert bionano vcf", default=False, action='store_true')
 ap.add_argument("--operation", help="Specifically extract insertions or deletions.",default=None)
 ap.add_argument("--indv", help="Write for this individual", default=None)
+ap.add_argument("--filter", help="Add filter value.",default=False,action='store_true')
+ap.add_argument("--gtfields", help="Add these genotype fields.", default=[], nargs="+")
+ap.add_argument("--fields", help="keep these fields", default=[], nargs="+")
+ap.add_argument("--groupCommas", help="Group INFO values separated by commas into the same key", action="store_true",default=False)
+ap.add_argument("--ignore-seqlen", help="Ignore length of the sequence when setting length of event",
+                action="store_true",
+                dest="ignoreSeqlen",
+                default=False)
 ap.add_argument("--out", help="Output file.", default="/dev/stdout")
 args = ap.parse_args()
 
@@ -38,11 +46,12 @@ def GetOp(v):
         return "deletion"
     
 for line in vcfFile:
+    infoFields = []
     if line[0] == "#":
         if line[0:6] == "##INFO":
             fieldMatch = fieldVal.match(line)
             if fieldMatch is not None and len(fieldMatch.groups()) > 0:
-                fields.append(fieldMatch.groups()[0])
+                infoFields.append(fieldMatch.groups()[0])
         if line[0:6] == "#CHROM" and args.indv is not None:
             vals    = line.split()
             samples = vals[9:]
@@ -64,10 +73,34 @@ for line in vcfFile:
         
         # I messed up by using ;'s in SVANN,
         
-        
-        g=vals[7].split(";")
-        info = [Tuple(v) for v in g]
+        infoStr = vals[7]
+        info = []
+        for infoGroup in infoStr.split(";"):
+            if args.groupCommas is False:
+                for infoVal in infoGroup.split(","):
+                    if ":" in infoVal:
+                        infoVal = infoVal.split(":")[1]
+                    if "=" in infoVal:
+                        tup = Tuple(infoVal)
+                        info.append(tup)
+            else:
+                if "=" in infoGroup:
+                    tup = Tuple(infoGroup)
+                    info.append(tup)
+                
         infokv = {i[0]: i[1] for i in info}
+
+        gtfieldValues=  []
+        if len(args.gtfields) != 0:
+            gtKeys = vals[8].split(":")
+            gtValues = vals[9].split(":")
+            for gtKey in args.gtfields:
+                val = "."
+                for ki in range(0,len(gtKeys)):
+                    if gtKey == gtKeys[ki]:
+                        val = gtValues[ki]
+                        break
+                gtfieldValues.append(val)
 
         if 0 in infokv:
             del(infokv[0])
@@ -77,12 +110,17 @@ for line in vcfFile:
             seq ="NONE"
             
             if "SEQ" in infokv:
-                end = int(vals[1]) + len(infokv["SEQ"])
                 seq = infokv["SEQ"]
-                svLen = len(infokv["SEQ"])
+            if "SEQ" in infokv and args.ignoreSeqlen is False:
+                end = int(vals[1]) + len(seq)
+                svLen = len(seq)
             elif "END" in infokv:
                 end = int(infokv["END"])
                 svLen = int(infokv["END"]) - int(vals[1])
+            elif "SVLEN" in infokv:
+                end = int(vals[1]) + abs(int(infokv["SVLEN"]))
+                svLen = infokv["SVLEN"]
+                infokv["END"] = str(end)
             svType = "NONE"
             if "SVTYPE" in infokv:
                 svType = infokv["SVTYPE"]
@@ -93,8 +131,11 @@ for line in vcfFile:
                 start = vals[1]
             else:
                 start = str(int(vals[1])-1)
-                
+            
             lineVals = [vals[0], start, str(end), svType, str(svLen), seq]
+            if len(args.fields) > 0:
+                lineVals += [infokv[f] for f in args.fields]
+                
         else:
             lineVals = [vals[0], vals[1], infokv["END"], GetOp(vals[4]), str(abs(int(infokv["SVLEN"] ))), vals[5]]
         if args.operation is not None and GetOp(vals[4]) != args.operation:
@@ -104,41 +145,32 @@ for line in vcfFile:
             #
             # header was missing some keys, maybe
             #
-            for key in infokv.keys():
-                if key not in fields:
-                    print key
-                    fields.append(key)
-            #
-            # We don't want these fields.
-            #
             
-            for key in ["SEQ", "SVLEN", "SAMPLES", "DP", "CONTIG_DEPTH", "CONTIG_SUPPORT", "OLD_VARIANT"]:
-                if key in fields:
-                    fields.remove(key)
-            i = 0
-
-            while i < len(fields):
-                if fields[i] not in infokv:
-                    del fields[i]
-                else:
-                    i+=1
-            order = { fields[i] : i for i in range(0,len(fields)) }
-
             if args.bionano is False:
-                header = ["chrom", "tStart", "tEnd", "svType", "svLen", "svSeq"] + fields
+                header = ["chrom", "tStart", "tEnd", "svType", "svLen", "svSeq"]
+                if len(args.fields) > 0:
+                    header+= args.fields
             else:
-                header = ["chrom", "tStart", "tEnd", "svType", "svLen", "svQual"] + fields
+                header = ["chrom", "tStart", "tEnd", "svType", "svLen", "svQual"] 
 
             if args.indv is not None:
                 header += ["gt"]
+
+            if args.filter is True:
+                header += ["FILTER"]
+
+            if len(args.gtfields) > 0:
+                header += args.gtfields
             
             outFile.write("#" + "\t".join(header) + "\n")
             madeHeader = True
 
-                    
-        lineVals += [ infokv[k] for k in fields ]
         if args.indv is not None:
             lineVals += [vals[9+sampleIndex]]
+        if args.filter is True:
+            lineVals += [vals[6]]
+        if len(args.gtfields) > 0:
+            lineVals += gtfieldValues
         outFile.write("\t".join(lineVals) + "\n")
 
                 

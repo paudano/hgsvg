@@ -11,6 +11,8 @@ all: $(DIR)/hap0/$(GAPS) \
   $(DIR)/hap1/$(GAPS) \
   $(DIR)/hap0/insertions.bed \
   $(DIR)/hap1/insertions.bed \
+	$(DIR)/hap0/indels.bed \
+	$(DIR)/hap1/indels.bed \
   $(DIR)/diploid/insertions.bed \
   $(DIR)/diploid/deletions.bed \
   alignments.h0.bam \
@@ -41,7 +43,7 @@ $(DIR)/hap1/$(GAPS): $(H1SAM)
 	$(PBS)/PrintGaps.py $(REF) $(H1SAM) --minContigLength 60000  --minAlignmentLength 10000  --ignoreHP 3 --minDist 2000 --condense 20 --outFile $@ --maxMasked 10
 
 $(DIR)/hap0/insertions.bed: $(DIR)/hap0/$(GAPS)
-	cd $(DIR)/hap0 && make -f $(HGSVG)/stitching/AnnotationPipeline.mak GAPS=$(GAPS) ALIGNMENTS=$(PWD)/$(H0SAM)
+	cd $(DIR)/hap0 && make -f $(HGSVG)/stitching/AnnotationPipeline.mak GAPS=$(GAPS) ALIGNMENTS=$(PWD)/$(H0SAM) 
 
 $(DIR)/hap1/insertions.bed: $(DIR)/hap1/$(GAPS)
 	cd $(DIR)/hap1 && make -f $(HGSVG)/stitching/AnnotationPipeline.mak GAPS=$(GAPS) ALIGNMENTS=$(PWD)/$(H1SAM)
@@ -54,52 +56,24 @@ $(DIR)/hap1/deletions.bed: $(DIR)/hap1/$(GAPS)
 
 
 $(DIR)/hap0/indels.bed: $(ALIGNMENTS)
-	cd $(DIR)/hap0 && make -f $(HGSVG)/stitching/AnnotationPipeline.mak GAPS=$(GAPS) ALIGNMENTS=$(PWD)/$(H0SAM) indels.bed
+	cd $(DIR)/hap0 && make -f $(HGSVG)/stitching/AnnotationPipeline.mak GAPS=$(GAPS) ALIGNMENTS=$(PWD)/$(H0SAM) indels.bed SAMPLE=$(SAMPLE)
 
 $(DIR)/hap1/indels.bed: $(ALIGNMENTS)
-	cd $(DIR)/hap1 && make -f $(HGSVG)/stitching/AnnotationPipeline.mak GAPS=$(GAPS) ALIGNMENTS=$(PWD)/$(H1SAM) indels.bed
+	cd $(DIR)/hap1 && make -f $(HGSVG)/stitching/AnnotationPipeline.mak GAPS=$(GAPS) ALIGNMENTS=$(PWD)/$(H1SAM) indels.bed SAMPLE=$(SAMPLE)
 
 $(DIR)/diploid/indels.bed: $(DIR)/hap0/indels.bed $(DIR)/hap1/indels.bed
 	-mkdir -p $(DIR)/diploid
-	# Unfortunately must handle insertions and deletions separately
+  # Unfortunately must handle insertions and deletions separately
 	egrep "^#|insertion" $(DIR)/hap0/indels.bed > $(DIR)/hap0/indels.insertions.bed
 	egrep "^#|insertion" $(DIR)/hap1/indels.bed > $(DIR)/hap1/indels.insertions.bed
-	bedtools intersect -header -a $(DIR)/hap0/indels.insertions.bed -b $(DIR)/hap1/indels.insertions.bed -r -f 0.5 -wao | \
-    awk '{ if (substr($$0,0,1) == "#" || $$12 != ".") print; }' | \
-    cut -f 1-10 | \
-    bedtools groupby -header -c 4 -o first -full > $(DIR)/diploid/indels.insertions.0.r.bed
-	bedtools intersect -header -b $(DIR)/hap0/indels.insertions.bed -a $(DIR)/hap1/indels.insertions.bed -r -f 0.5 -wao | \
-    awk '{ if (substr($$0,0,1) == "#" ||$$12 != ".") print; }' | \
-    cut -f 1-10 | \
-    bedtools groupby -header -c 4 -o first -full > $(DIR)/diploid/indels.insertions.1.r.bed
-	bedtools intersect -header -v -a $(DIR)/hap0/indels.insertions.bed -b $(DIR)/diploid/indels.insertions.0.r.bed -r -f 1.0 > $(DIR)/diploid/indels.insertions.h0.bed
-	bedtools intersect -header -v -a $(DIR)/hap1/indels.insertions.bed -b $(DIR)/diploid/indels.insertions.1.r.bed -r -f 1.0 > $(DIR)/diploid/indels.insertions.h1.bed
-	cp $(DIR)/diploid/indels.insertions.0.r.bed $(DIR)/diploid/indels.insertions.hom.bed
+	$(HGSVG)/sv/utils/MergeHaplotypes.sh $(DIR)/hap0/indels.insertions.bed $(DIR)/hap1/indels.insertions.bed $(DIR)/diploid/indels.insertions.bed "svType	svLen	svSeq qName qStart qEnd"
 
 	# deletions
 	egrep "^#|deletion" $(DIR)/hap0/indels.bed > $(DIR)/hap0/indels.deletions.bed
 	egrep "^#|deletion" $(DIR)/hap1/indels.bed > $(DIR)/hap1/indels.deletions.bed
-	bedtools intersect -header -a $(DIR)/hap0/indels.deletions.bed -b $(DIR)/hap1/indels.deletions.bed -r -f 0.5 -wao | \
-    awk '{ if (substr($$0,0,1) == "#" || $$12 != ".") print; }' | \
-    cut -f 1-10 | \
-    bedtools groupby -header -c 4 -o first -full > $(DIR)/diploid/indels.deletions.0.r.bed
-	bedtools intersect -header -b $(DIR)/hap0/indels.deletions.bed -a $(DIR)/hap1/indels.deletions.bed -r -f 0.5 -wao | \
-    awk '{ if (substr($$0,0,1) == "#" || $$12 != ".") print; }' | \
-    cut -f 1-10 | \
-    bedtools groupby -c 4 -o first -full > $(DIR)/diploid/indels.deletions.1.r.bed
-	bedtools intersect -header -v -a $(DIR)/hap0/indels.deletions.bed -b $(DIR)/diploid/indels.deletions.0.r.bed -r -f 1.0 > $(DIR)/diploid/indels.deletions.h0.bed
-	bedtools intersect -header -v -a $(DIR)/hap1/indels.deletions.bed -b $(DIR)/diploid/indels.deletions.1.r.bed -r -f 1.0 > $(DIR)/diploid/indels.deletions.h1.bed
-	cp $(DIR)/diploid/indels.deletions.0.r.bed $(DIR)/diploid/indels.deletions.hom.bed
-
-	cat $(DIR)/diploid/indels.insertions.h0.bed | awk '{ print $$0"\tHAP0";}' > $@
-	grep -v "^#" $(DIR)/diploid/indels.insertions.h1.bed | awk '{ print $$0"\tHAP1";}' >> $@
-	grep -v "^#" $(DIR)/diploid/indels.insertions.hom.bed | awk '{ print $$0"\tHOM";}' >> $@
-	grep -v "^#" $(DIR)/diploid/indels.deletions.h0.bed | awk '{ print $$0"\tHAP0";}' >> $@
-	grep -v "^#" $(DIR)/diploid/indels.deletions.h1.bed | awk '{ print $$0"\tHAP1";}' >> $@
-	grep -v "^#" $(DIR)/diploid/indels.deletions.hom.bed | awk '{ print $$0"\tHOM";}' >> $@
-	bedtools sort -header -i $@ > $@.tmp
-	mv -f $@.tmp $@
-
+	$(HGSVG)/sv/utils/MergeHaplotypes.sh $(DIR)/hap0/indels.deletions.bed $(DIR)/hap1/indels.deletions.bed $(DIR)/diploid/indels.deletions.bed "svType	svLen	svSeq qName qStart qEnd"
+	cp -f $(DIR)/diploid/indels.insertions.bed $(DIR)/diploid/indels.bed
+	grep -v "^#" $(DIR)/diploid/indels.deletions.bed >> $(DIR)/diploid/indels.bed
 
 $(DIR)/diploid/indels.vcf: $(DIR)/diploid/indels.bed
 	module load pandas && $(HGSVG)/sv/utils/variants_bed_to_vcf.py --bed $(DIR)/diploid/indels.bed --ref $(REF) --sample $(SAMPLE) --type sv --vcf $@

@@ -2,47 +2,28 @@ PBS=/net/eichler/vol5/home/mchaisso/projects/PacBioSequencing/scripts
 BLASR=/net/eichler/vol5/home/mchaisso/software/blasr_2/cpp/alignment/bin/blasr
 REF=/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.fasta
 MASKER?=repeatmasker
-ALIGNMENTS?=alignments.sam
 HGSVC=$(HOME)/projects/HGSVG/hgsvg/
 HGSVG=$(HGSVC)
 GAPS?=gaps.bed
+SAMPLE?=SAMMPLE
 
-.PRECIOUS: $(ALIGNMENTS) $(GAPS)
+.PRECIOUS:  $(GAPS)
 
 all: $(GAPS) insertions.bed \
 		deletions.bed \
-  $(ALIGNMENTS).bed \
-  tiling_contigs.tab \
 	insertion/insertions.fasta\
 	deletion/deletions.fasta\
   insertions.bb \
   deletions.bb 
-#	deletion/full/deletions.partial_masked.bed.trf \
-#	insertion/full/insertions.partial_masked.bed.trf
-#	insertion/rm/insertions.fasta.out \
-#	deletion/rm/deletions.fasta.out \
-#	deletion/deletions.annotated.bed \
-#	insertion/insertions.annotated.bed \
-#	insertion/L1.bed \
-#	deletion/L1.bed \
-# insertion/NONE.bed\
-#  deletion/NONE.bed\
 
 help:
-	@echo "Usage: make -f AnnotationPipeline.mak alignments=assembly.sam [INPUT_FASTA=<assemblies_file_name>] "
+	@echo "Usage: make -f AnnotationPipeline.mak GAPS=gaps.bed  "
 
 insertions.bed: $(GAPS) 
 	egrep "^#|insertion" $(GAPS) | bedtools sort -header > $@
 
 deletions.bed: $(GAPS)
 	egrep "^#|deletion" $(GAPS) | bedtools sort -header > $@
-
-tiling_contigs.tab: $(ALIGNMENTS).bed
-	$(PBS)/local_assembly/TilingPath.py $^ $@
-
-indels.bed: $(GAPS) 
-	$(PBS)/PrintGaps.py $(REF) $(ALIGNMENTS) --outFile $@.tmp --ignoreHP 100 --minLength 2 --maxLength 50
-	$(PBS)/SmallIndelAnalysis/FilterGapsByTilingPath.py $@.tmp tiling_contigs.tab --out $@
 
 
 #

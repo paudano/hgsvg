@@ -12,6 +12,7 @@ ap = argparse.ArgumentParser(description="Select columns from a table")
 ap.add_argument("--table", help="input table", default="/dev/stdin")
 ap.add_argument("--cols", help="Column names", required=True, nargs="+")
 ap.add_argument("--out", help="Output file.", default="/dev/stdout")
+
 args = ap.parse_args()
 inFile = open(args.table)
 outFile = open(args.out,'w')

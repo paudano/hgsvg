@@ -29,7 +29,7 @@ cwd=os.getcwd()
 shell.prefix(". {SNAKEMAKE_DIR}/config.sh; ")
 
 haps=["h0","h1"]
-
+shortHaps=["0", "1"]
 rule all:
     input:
         asmBed      = expand("{base}.{hap}.bam.bed",base=config['alnBase'], hap=haps),
@@ -45,13 +45,82 @@ rule all:
         chrBed      = expand("contigs.{hap}.fasta.sam.bed", hap=haps),
 	chrBed6     = expand("contigs.{hap}.fasta.sam.bed6", hap=haps),
 	chrBB       = expand("contigs.{hap}.fasta.sam.bb", hap=haps),
-        annotation  = "stitching_hap_gaps/diploid/insertions.bed"
+        indels      = expand("stitching_hap_gaps/hap{hap}/indels.bed", hap=shortHaps),
+        indelVCF    = expand("stitching_hap_gaps/hap{hap}/indels.orig.vcf",hap=shortHaps),
+        normVCF     = expand("stitching_hap_gaps/hap{hap}/indels.norm.vcf",hap=shortHaps),
+        normBed     = expand("stitching_hap_gaps/hap{hap}/indels.norm.bed",hap=shortHaps),                
+        annotation  = "stitching_hap_gaps/diploid/insertions.bed",
+        indelBed    ="stitching_hap_gaps/diploid/indels.bed"
         
+rule MakeIndels:
+    input:
+       asmSam="contigs.h{hap}.fasta.sam",
+    output:
+       indels="stitching_hap_gaps/hap{hap}/indels.orig.bed"
+    params:
+       sge_opts="-pe serial 2 -l mfree=4G -l h_rt=2:00:00",
+       sample=config["sample"],
+       sd=SNAKEMAKE_DIR,
+       ref=config["ref"],
+       pbs=config["pbs"]
+    shell:"""
+mkdir -p stitching_hap_gaps/hap{wildcards.hap}
+{params.pbs}/PrintGaps.py {params.ref} {input.asmSam} --minLength 2 --maxLength 49 --ignoreHP 5 --outFile {output.indels}
+"""
+
+rule ConvertIndelBedToVCF:
+    input:
+        indelBed="stitching_hap_gaps/hap{hap}/indels.orig.bed"
+    output:
+        indelVCF="stitching_hap_gaps/hap{hap}/indels.orig.vcf"
+    params:
+        sge_opts="-pe serial 1 -l mfree=2G -l h_rt=04:00:00 -l disk_free=4G",
+        ref=config["ref"],
+        sample=config["sample"]
+    shell:"""
+module unload python/3.5.2; module load python/2.7.3; module load numpy/1.11.0; module load bedtools/latest; module load pandas && {SNAKEMAKE_DIR}/../sv/utils/variants_bed_to_vcf.py --bed {input.indelBed} --ref {params.ref} --sample {params.sample} --type indel --vcf /dev/stdout | bedtools sort -header > {output.indelVCF}
+"""
 
 
+rule NormIndelVCF:
+    input:
+        indelVCF="stitching_hap_gaps/hap{hap}/indels.orig.vcf"
+    output:
+        indelNormVCF="stitching_hap_gaps/hap{hap}/indels.norm.vcf"
+    params:
+        sge_opts="-pe serial 1 -l mfree=2G -l h_rt=04:00:00 -l disk_free=4G",
+        ref=config["ref"],
+    shell:"""
+vt normalize -r {params.ref} -o {output.indelNormVCF} {input.indelVCF}
+"""
+
+rule NormIndelVCFToBed:
+    input:
+        indelNormVCF="stitching_hap_gaps/hap{hap}/indels.norm.vcf"
+    output:
+        indelNormBed="stitching_hap_gaps/hap{hap}/indels.norm.bed"
+    params:
+        sge_opts="-pe serial 1 -l mfree=2G -l h_rt=04:00:00 -l disk_free=4G",
+        ref=config["ref"],
+    shell:"""
+module unload python/3.5.2; module load python/2.7.3; module load numpy/1.11.0; module load bedtools/latest; module load pandas ; {SNAKEMAKE_DIR}/../sv/utils/variants_vcf_to_bed.py --vcf {input.indelNormVCF} --out {output.indelNormBed}
+"""
+
+rule CombineHapIndels:
+    input:
+        indelNormBed=expand("stitching_hap_gaps/hap{hap}/indels.norm.bed",hap=shortHaps)
+    output:
+        indelBed="stitching_hap_gaps/diploid/indels.bed"
+    params:
+        sge_opts="-pe serial 1 -l mfree=2G -l h_rt=04:00:00 -l disk_free=4G",
+        sd=SNAKEMAKE_DIR
+    shell:"""
+{params.sd}/../sv/utils/MergeHaplotypes.sh {input.indelNormBed} {output.indelBed} "svType svLen svSeq" 0.8
+"""
+    
 rule MakeAnnotation:
     input:
-        asmSam=expand("contigs.{hap}.fasta.sam",hap=haps)
+       asmSam=expand("contigs.{hap}.fasta.sam",hap=haps)
     output:
         annotation="stitching_hap_gaps/diploid/insertions.bed"
     params:

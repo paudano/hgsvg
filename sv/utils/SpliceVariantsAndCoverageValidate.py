@@ -22,18 +22,19 @@ ap.add_argument("--window", help="Collect all gaps within this window.", type=in
 ap.add_argument("--minGap", help="Minimum gap size.", default=30, type=int)
 ap.add_argument("--maxSize", help="Maximum size of region.", default=None, type=int)
 ap.add_argument("--maxCoverage", help="Maximum coverage to allow.", default=100, type=int)
+ap.add_argument("--maxInsertion", help="Maximum length database to generate", default=20000,type=int)
 ap.add_argument("--out",    help="Output file.", default="/dev/stdout")
 ap.add_argument("--tmpdir", help="Temporary directory",default=None)
 ap.add_argument("--nproc",  help="Number of threads.", default=4,type=int)
-ap.add_argument("--keep",   help="Keep temporary files", default=False, action='store_true')
+ap.add_argument("--keep",   help="Keep temporary files", default=False, action="store_true")
 ap.add_argument("--split",  help="Split input gaps.", default=None, type=int)
 ap.add_argument("--splitDir",  help="Split input gaps into this dir.", default=None)
-ap.add_argument("--mssm",   help="Parse mssm lines.", default=False, action='store_true')
-ap.add_argument("--falcon", help="Parse in falcon format", default=False, action='store_true')
+ap.add_argument("--mssm",   help="Parse mssm lines.", default=False, action="store_true")
+ap.add_argument("--falcon", help="Parse in falcon format", default=False, action="store_true")
 ap.add_argument("--count",  help="Just count clusters, don't do any validation.", default=None)
 ap.add_argument("--genotypeVcf", help="Use SNVs to call genotype.", default=None)
 ap.add_argument("--sample", help="Sample to select from genotype", default=None)
-ap.add_argument("--separate-haplotypes", help="Separate haplotypes", dest="separateHaplotypes", default=False, action='store_true')
+ap.add_argument("--separate-haplotypes", help="Separate haplotypes", dest="separateHaplotypes", default=False, action="store_true")
 
 args = ap.parse_args()
 if args.count is None:
@@ -271,6 +272,7 @@ if args.split is not None:
     sStart = 0
     sEnd = 0
     b = len(svClusters)/args.split
+
     for i in range(0,args.split-1):
         sEnd+=b
         clustFile = open("{}/gaps.bed.{}".format(args.splitDir, i),'w')
@@ -281,7 +283,7 @@ if args.split is not None:
     i=args.split-1
     clustFile = open("{}/gaps.bed.{}".format(args.splitDir, i),'w')
     clustFile.write(headerLine)
-    clustFile.write("\n".join([c.line for cl in svClusters[sStart:sEnd] for  c in cl ]))
+    clustFile.write("\n".join([c.line for cl in svClusters[sStart:] for  c in cl ]))
     clustFile.close()
     sys.exit(0)
         
@@ -338,7 +340,12 @@ def SpliceTestLine(svs):
             
         else:
             if sv.svType == "insertion":
-                spliceSeqs.append(sv.seq)
+                svSeq = sv.seq
+                if len(svSeq) > args.maxInsertion:
+                    mid=args.maxInsertion/2
+                    svSeq = sv.seq[0:mid] +sv.seq[-mid:]
+                    sys.stderr.write("keeping center of insertion {}\n".format(len(sv.seq)))
+                spliceSeqs.append(svSeq)
                 refPos = sv.start
             else:
                 refPos = sv.end
@@ -347,6 +354,7 @@ def SpliceTestLine(svs):
             if svIndex < len(svs)-1:
                 if refPos > svs[svIndex+1].start:
                     sys.stderr.write("Ignoring an sv {} {} {}\n".format(svs[svIndex+1].chrom, svs[svIndex+1].start, svs[svIndex+1].end))
+                    svIndex+=1
                     continue
                 else:
                     between = ref.fetch(sv.chrom, refPos, svs[svIndex+1].start)
@@ -392,7 +400,11 @@ def SpliceTestLine(svs):
     #
     fetchStart = svs[0].start - args.flank
     fetchEnd   = GetEnd(svs[-1]) + args.flank
-
+    # just count one breakpoint if large event.
+    if fetchEnd - fetchStart > 30000:
+        sys.stderr.write("******Truncating fetch region {}\n".format(fetchEnd-fetchStart))
+        fetchEnd = svs[0].start  + args.flank
+    sys.stdout.write("Fetching from region " + str(fetchEnd-fetchStart) + " " + str(svs[-1].svType) + "\n")
     
     
     dbFile.close()
@@ -455,26 +467,29 @@ def SpliceTestLine(svs):
 #    rsFile  = tempfile.NamedTemporaryFile(dir=args.tmpdir, suffix=".sam", delete=False, mode='w')
     dbsFile = tempfile.NamedTemporaryFile(dir=args.tmpdir, suffix=".sam", delete=False, mode='w')
     
-    commandOptions = " -sam -bestn 1 -affineOpen 5 -affineExtend 5 -nproc 6 -minAlignLength {} ".format(int(1.5*args.flank))
+    commandOptions = " -maxMatch 25 -sdpMaxAnchorsPerPosition 5 -sam -bestn 1 -affineOpen 5 -affineExtend 5 -nproc 6 -minAlignLength {} ".format(int(1.5*args.flank))
 
     dbCommand = "/net/eichler/vol5/home/mchaisso/software/blasr_2/cpp/alignment/bin/blasr {} {} -preserveReadTitle -clipping soft -out {} ".format(readsFile.name, dbFile.name, dbsFile.name) + commandOptions
+    tempFileNames.append(dbsFile.name)
+    
 
     dn = open(os.devnull)
     regionLength = fetchEnd - fetchStart
     coverage = nBases/regionLength
     sys.stderr.write("coverage: " + str(coverage)+ "\n")
-    subprocess.call(dbCommand.split(),stderr=dn)
+
     if args.genotypeVcf is not None:
         genotype=True
     else:
         genotype=False
     if coverage < args.maxCoverage:
-        sys.stderr.write("Sufficient coverage " + str(coverage) + "\n")        
+        subprocess.call(dbCommand.split(),stderr=dn)        
+        sys.stderr.write("Sufficient coverage " + str(coverage) + "\n")
         cov = CountRefCoverage(dbsFile.name, genotype)
-        sys.stderr.write(str(cov) + "\n")
     else:
         sys.stderr.write("Skipping event from coverage " + str(coverage) + "\n")
         cov = { "db": 0, "re": 0}
+    sys.stderr.write(svs[0].svType+ " " + str(cov) + "\n")
     
     if args.genotypeVcf is False and "db" in cov and cov["db"] < 500:
         print "spliced " + str(len(svs))        

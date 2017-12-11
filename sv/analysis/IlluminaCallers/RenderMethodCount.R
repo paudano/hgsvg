@@ -1,0 +1,33 @@
+t <- read.table("/net/eichler/vol24/projects/structural_variation/nobackups/projects/HGSVG/analysis/IlluminaCombined/HG00514/fields.count.txt")
+x11(type="dbcairo")
+pdf("HG00514.illumina_overlap.dots.pdf")
+plot(jitter(t$V1), jitter(t$V2), pch=16, col="#11111111", ylab="Fraction overlap", xlab="Number of callers")
+dev.off()
+library(vioplot)
+pdf("HG00514.illumina_overlap.pdf")
+plot(c(), xlim=c(0,10), ylim=c(0,1), ylab="Fraction overlap", xlab="Number of callers")
+sapply(seq(1,10), function(i) vioplot(t$V2[which(t$V1 == i)], at=i, add=T, col='grey'))
+dev.off()
+
+h <- lapply(seq(1,max(t$V1)), function(i) hist(t$V2[which(t$V1 == i)],breaks=c(seq(0,1,by=0.05)), plot=F))
+mh <- max(sapply(seq(1,max(t$V1)), function(i) max(h[i][[1]]$counts)))
+library(RColorBrewer)
+pdf("HG00514.illumina_overlap.lines.pdf",h=6,w=8)
+
+par(mai=c(1,1,1,1))
+plot(c(), xlim=c(0,1), ylim=c(1,mh*1.1), ylab="Counts", xlab="Fraction overlap", bty='L')
+
+rb <- rainbow(max(t$V1),alpha=0.5)
+rbf <- rainbow(max(t$V1))
+brp <- brewer.pal(12,"Paired")
+brpc <- paste(brp, "55",sep="")
+three <- brewer.pal(3,"Set1")
+sapply(seq(1,max(t$V1)), function(i) points(h[i][[1]]$mids, h[i][[1]]$counts, pch=21, bg=brpc[i]))
+sapply(seq(1,max(t$V1)), function(i) points(h[i][[1]]$mids, h[i][[1]]$counts, type='l', lwd=2, col=brp[i] ))
+#legend(x=1.1,y=500,legend=paste(1:max(t$V1)), pch=21, pt.bg=rbf[i],xpd=T)
+                                        #legend(x=1.1,y=500,legend=paste(1:max(t$V1)), pch=21, pt.bg=rainbow(max(t$V1)),xpd=T)
+legend(x=1.1,y=500,legend=paste(1:max(t$V1)), pch=21, pt.bg=brp,xpd=T)
+dev.off()
+
+length(rbf)
+

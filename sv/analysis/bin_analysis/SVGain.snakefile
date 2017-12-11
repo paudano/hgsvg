@@ -124,7 +124,7 @@ rule GetBinNetGain:
         sge_opts="-pe serial 1 -l h_rt=1:00:00 -l mfree=1G",
         sd=SNAKEMAKE_DIR,
     shell:"""
-bedtools intersect -a {input.combined} -b {input.lj} -loj | ~/projects/HGSVG/hgsvg/sv/analysis/bin_analysis/FlipLOJ.py | bedtools groupby -g 1-3 -c 8 -o  sum -full | cut -f 14 > {output.netGain}
+bedtools intersect -a {input.combined} -b {input.lj} -loj | ~mchaisso/projects/HGSVG/hgsvg/sv/analysis/bin_analysis/FlipLOJ.py | bedtools groupby -g 1-3 -c 8 -o  sum -full | cut -f 14 > {output.netGain}
 """
 
 rule CombineNetGain:
@@ -152,7 +152,7 @@ rule AddSD:
 module unload python/3.5.2
 module load python/2.7.3
 module load numpy
-~/projects/HGSVG/hgsvg/sv/analysis/bin_analysis/AddSD.py {input.allNetGain} --out {output.allNetGainSD}
+~mchaisso/projects/HGSVG/hgsvg/sv/analysis/bin_analysis/AddSD.py {input.allNetGain} --out {output.allNetGainSD}
 """
 
 rule SelectTopSD:
@@ -182,7 +182,7 @@ rule ExtractFasta:
         ref=config["ref"],
         sge_opts="-pe serial 1 -l h_rt=1:00:00 -l mfree=8G",
     shell:"""
-~/projects/mcutils/src/samSubseq -s {wildcards.sample}/contigs.{wildcards.hap}.fasta.sam -R {input.topNetGainSD} -f {output.topNetGainFasta} -n
+~mchaisso/projects/mcutils/src/samSubseq -s {wildcards.sample}/contigs.{wildcards.hap}.fasta.sam -R {input.topNetGainSD} -f {output.topNetGainFasta} -n
 """
 
         
@@ -207,7 +207,7 @@ for rgn in `cut -f 1 {input.topNetGainSD}`; do
     mkdir -p bin_expansion/$rgnName
     for sample in {params.samples}; do
         for hap in {params.haps}; do
-            samtools faidx bin_expansion/$sample.$hap.fasta $rgn | ~/projects/HGSVG/hgsvg/sv/analysis/bin_analysis/rename.py $sample.$hap >> bin_expansion/$rgnName/msa.fasta
+            samtools faidx bin_expansion/$sample.$hap.fasta $rgn | ~mchaisso/projects/HGSVG/hgsvg/sv/analysis/bin_analysis/rename.py $sample.$hap >> bin_expansion/$rgnName/msa.fasta
         done
     done
 done
@@ -229,9 +229,9 @@ module unload python/3.5.2
 module load python/2.7.3
 module load numpy/1.7.0
 module load biopython
-~/projects/HGSVG/hgsvg/sv/analysis/bin_analysis/FixShort.py msa.fasta msa.fix.fasta
+~mchaiss/projects/HGSVG/hgsvg/sv/analysis/bin_analysis/FixShort.py msa.fasta msa.fix.fasta
 miropeats -s 300 -onlyinter msa.fix.fasta
-~/projects/HGSVG/hgsvg/sv/analysis/FixMiropeatsPS.py threshold300 threshold300.ps
+~mchaisso/projects/HGSVG/hgsvg/sv/analysis/FixMiropeatsPS.py threshold300 threshold300.ps
 ps2pdf threshold300.ps
 """
 

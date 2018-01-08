@@ -66,7 +66,8 @@ def CountRefCoverage(samFileName, checkHaplotype=False):
         haps["db"]['u'] = 0        
     for ref in samFile.references:
         refs[ref] = 0
-    
+#    import pdb
+#    pdb.set_trace()    
     for read in samFile.fetch():
         if read.reference_id != -1:
             rn = read.reference_name 

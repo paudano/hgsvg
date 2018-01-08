@@ -107,10 +107,7 @@ def convert_bed_to_vcf(bed_filename, reference_filename, vcf_filename, sample, v
     calls["sample_name"] = sample
     calls["call_id"] = "."
     calls["quality"] = "30" #calls.apply(calculate_variant_quality, axis=1)
-    if "nAlt" in calls:
-        calls["filter"] = calls.apply(lambda row: GetPass(row["nAlt"]), axis=1)
-    else:
-        calls["filter"] = "PASS"
+    calls["filter"] = "PASS"
 
 
     # Make sure the sv length and sv sequence agree

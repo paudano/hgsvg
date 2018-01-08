@@ -110,8 +110,8 @@ rule FixDelsInSVCalls:
         sv="sv_calls.bed",
     output:
         svdel="sv_calls.fix_del.bed",
-        sge_opts=config["sge_small"],
     params:
+        sge_opts=config["sge_small"],
         ref=config["ref"],
         sd=SNAKEMAKE_DIR,
     shell:"""
@@ -183,7 +183,7 @@ rule MakeBNCalls:
         sd=SNAKEMAKE_DIR,
     shell:"""
 zcat {input.bnvcf} | {params.sd}/../sv/utils/variants_vcf_to_bed.py --vcf /dev/stdin --out {output.bncalls}.tmp --bionano
-cat {output.bncalls}.tmp | bioawk -c hdr '{{ if (substr($0,0,1) == "#" || ($svLen >=50 && $svLen < 10000000)) print; }}' > {output.bncalls}
+cat {output.bncalls}.tmp | bioawk -c hdr '{{ if (substr($0,0,1) == "#" || ($svLen >=50 && $svLen < 6000000)) print; }}' > {output.bncalls}
 """
 
 rule SeparateBNCalls:
@@ -196,7 +196,8 @@ rule SeparateBNCalls:
         sd=SNAKEMAKE_DIR,
     shell:"""
 nf=`head -1 {input.bncalls} | awk '{{ print NF;}}'`
-egrep "^#|{wildcards.op}" {input.bncalls} | bedtools groupby -g 1-3 -c 4 -o first -full | cut -f 1-$nf > {output.bnCallsOp}
+egrep "^#|{wildcards.op}" {input.bncalls} | awk '{{ if (substr($0,0,1) == "#" || $3-$2 < 6000000) print; }}' | bedtools groupby -g 1-3 -c 4 -o first -full | cut -f 1-$nf | \
+ {params.sd}/../sv/utils/rmdup.py > {output.bnCallsOp}        
 """
 
 shortOpToLongOp={"del": "deletion", "ins" : "insertion"}
@@ -215,7 +216,7 @@ nmssm=`head -1 {input.mssmCalls} | awk '{{ print NF;}}'`
 nbm=`head -1 {input.bnCalls} | awk '{{ print NF;}}'`
 ratioIndex=$(($nmssm+$nbm+3))
 
-{{ {{ head -1 {input.mssmCalls}; head -1 {input.bnCalls} | {params.sd}/../sv/utils/AddIndex.py _2; }} | paste -s ; bedtools intersect -a {input.mssmCalls} -b {input.bnCalls} -loj; }} | bioawk -c hdr '{{ bnsv=$svLen_2; if (bnsv < 0) {{ bnsv=-1*bnsv; }}; svdiff=bnsv -$svLen; if (svdiff < 0) {{ svdiff =-1*svdiff;}} ; if (substr($0,0,1) == "#") {{ print $0"\\t\\tbnKey\\tbnSize\\tbnOvp"; }} else {{ if ($tStart_2 == "-1") {{ print $0"\\tNONE\\t0\\t1";}} else {{ print $0"\\t"$_chrom_2"_"$tStart_2"_"$tEnd_2"\\t"$svLen_2"\\t"svdiff/bnsv; }} }}  }}' | bedtools groupby -header -g 1-3 -c $ratioIndex -o min -full | bioawk -c hdr '{{ print $bnKey"\\t"$bnSize"\\t"$bnOvp;}}' > {output.mssmBnSupport}
+{{ {{ head -1 {input.mssmCalls}; head -1 {input.bnCalls} | {params.sd}/../sv/utils/AddIndex.py _2; }} | paste -s ; bedtools intersect -a {input.mssmCalls} -b {input.bnCalls} -loj; }} | bioawk -c hdr '{{ bnsv=$svLen_2; if (bnsv < 0) {{ bnsv=-1*bnsv; }}; svdiff=bnsv -$svLen; if (svdiff < 0) {{ svdiff =-1*svdiff;}} ; if (substr($0,0,1) == "#") {{ print $0"\\t\\tbnKey\\tbnSize\\tbnOvp"; }} else {{ if ($tStart_2 == "-1" || $svType != $svType_2) {{ print $0"\\tNONE\\t0\\t1";}} else {{ print $0"\\t"$_chrom_2"_"$tStart_2"_"$tEnd_2"\\t"$svLen_2"\\t"svdiff/bnsv; }} }}  }}' | bedtools groupby -header -g 1-3 -c $ratioIndex -o min -full | bioawk -c hdr '{{ print $bnKey"\\t"$bnSize"\\t"$bnOvp;}}' > {output.mssmBnSupport}
 """
 
 
@@ -584,7 +585,7 @@ module load ucsc
 egrep "^#|insertion" {input.bed} | bioawk -c hdr 'BEGIN{{OFS="\\t";}} {{ print $_chrom, $tStart, $tEnd, "{wildcards.source}", 1000, "+", $tStart, $tEnd, "0,0,255";}}' | grep -v "^#" | bedtools sort | {SNAKEMAKE_DIR}/../sv/utils/FixCoordinates.py /dev/stdin /dev/stdout {params.ref}.fai >  {wildcards.source}.insertion.bed
 bedToBigBed {wildcards.source}.insertion.bed {params.ref}.fai {wildcards.source}.insertion.bb -type=bed9
 
-egrep "^#|deletion" {input.bed} | bioawk -c hdr 'BEGIN{{OFS="\\t";}} {{ print $_chrom, $tStart, $tEnd, "{wildcards.source}", 1000, "+", $tStart, $tEnd, "255,0,0";}}' | grep -v "^#" | bedtools sort | {SNAKEMAKE_DIR}/../sv/utils/FixCoordinates.py /dev/stdin /dev/stdout {params.ref}.fai > {wildcards.source}.deletion.bed
+egrep "^#|deletion" {input.bed} | bioawk -c hdr 'BEGIN{{colors["HOM"]="255,0,0"; colors["HAP1"]="0,255,0"; colors["HAP0"]="0,0,255"; OFS="\\t";}} {{ print $_chrom, $tStart, $tEnd, "{wildcards.source}", 1000, "+", $tStart, $tEnd, colors[$hap];}}' | grep -v "^#" | bedtools sort | {SNAKEMAKE_DIR}/../sv/utils/FixCoordinates.py /dev/stdin /dev/stdout {params.ref}.fai > {wildcards.source}.deletion.bed
 bedToBigBed {wildcards.source}.deletion.bed {params.ref}.fai {wildcards.source}.deletion.bb -type=bed9
 """
 
@@ -752,15 +753,15 @@ bioawk -c hdr '{{ if (substr($0,0,1) == "#" || $svType == "deletion") print; }}'
 rule AnnotateMSSMDistance:
     input:
         mssm="mssm.bed.filt.{op}.bed",
-        uw="uw.bed.filt.{op}.bed"
+        uw=expand("uw.bed.filt.{ops}.bed",ops=["del", "ins"]),
     output:
         svAnnot="mssm.bed.filt.{op}.bed.uw-dist",
     params:
         sge_opts=config["sge_small"]
     shell:"""
 echo "distToUW" > {output.svAnnot}
-{{ {SNAKEMAKE_DIR}/../sv/utils/HeaderMod.py --source {input.mssm} {input.uw} --index --append distToUW ; \
- bedtools closest -header -a {input.mssm} -b {input.uw} -d | bedtools groupby -c 4 -o first -full; }} | bioawk -c hdr '{{ print $distToUW;}}' | tail -n +3  >> {output.svAnnot}
+cat {input.uw[0]} {input.uw[1]} | bedtools sort > {input.uw[0]}.combined
+bedtools closest -a {input.mssm} -b {input.uw[0]}.combined -d | awk '{{ print $NF;}}'>> {output.svAnnot}
 """
 
 
@@ -1014,7 +1015,7 @@ rule CombineMergedToTracks:
 module load numpy/1.11.0    
 module load pandas
 
-cat merged.del.bed | bioawk -c hdr 'BEGIN{{OFS="\\t";}} {{ print $_chrom, $tStart, $tEnd, $source, 1000, "+", $tStart, $tEnd, "255,0,0";}}' | grep -v "^#" | bedtools sort | {SNAKEMAKE_DIR}/../sv/utils/FixCoordinates.py /dev/stdin /dev/stdout {params.ref}.fai > {params.sample}.del.bed9
+cat merged.del.bed | bioawk -c hdr 'BEGIN{{colors["HOM"]="255,0,0"; colors["HAP1"]="0,255,0"; colors["HAP0"]="0,0,255"; OFS="\\t";}} {{ print $_chrom, $tStart, $tEnd, $source, 1000, "+", $tStart, $tEnd, colors[$hap];}}' | grep -v "^#" | bedtools sort | {SNAKEMAKE_DIR}/../sv/utils/FixCoordinates.py /dev/stdin /dev/stdout {params.ref}.fai > {params.sample}.del.bed9
 bedToBigBed {params.sample}.del.bed9 {params.ref}.fai {params.sample}.del.bb -type=bed9
 
 cat merged.ins.bed | bioawk -c hdr 'BEGIN{{OFS="\\t";}} {{ print $_chrom, $tStart, $tEnd, $source, 1000, "+", $tStart, $tEnd, "0,0,255";}}' | grep -v "^#" | bedtools sort | {SNAKEMAKE_DIR}/../sv/utils/FixCoordinates.py /dev/stdin /dev/stdout {params.ref}.fai > {params.sample}.ins.bed9

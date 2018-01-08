@@ -87,8 +87,6 @@ rule all:
         mergedortho=expand("merged_ortho.{svtype}.bed",svtype=svTypes),
         mergedintegrated=expand("{sample}.merged_nonredundant.{svtype}.bed", sample=config["sample"], svtype=svTypes),
         mergedintegratedvcf=expand("{sample}.merged_nonredundant.{svtype}.vcf", sample=config["sample"], svtype=svTypes),
-#        mergedintegratedvcfvep=expand("{sample}.merged_nonredundant_vep.{svtype}.vcf", sample=config["sample"], svtype=svTypes),
-#        mergedintegratedvcfveptab=expand("{sample}.merged_nonredundant_vep.{svtype}.tab", sample=config["sample"], svtype=svTypes),
         mergedintegratedvcfexonstr=expand("{sample}.merged_nonredundant_exon.{svtype}.bed", sample=config["sample"], svtype=svTypes),
         mergedintegratedvcfexonsmerged=expand("{sample}.merged_nonredundant_exon.{svtype}.bed.tr", sample=config["sample"], svtype=svTypes),
         mergedintegratedvcfexons=expand("{sample}.merged_nonredundant_exon.{svtype}.bed.merged", sample=config["sample"], svtype=svTypes),                
@@ -102,7 +100,7 @@ rule all:
         passpdf=expand("{sample}.{svtype}.pass.pdf",sample=config["sample"], svtype=svTypes),
         passfail=expand("integrated.{svtype}.bed.passfail",svtype=svTypes),
         passmethodpdf=expand("{sample}.{svtype}.method_count.pdf",sample=config["sample"],svtype=svTypes),
-#        tfbsablat="tfbs_ablation.bed",
+
         callers=expand("callers.{svtype}.bed", svtype=svTypes),
         callerstab=expand("callers.{svtype}.tab", svtype=svTypes),
         methodpca=expand("MethodPCA.{svtype}.{sample}.pdf",svtype=svTypes, sample=config["sample"]),
@@ -760,7 +758,7 @@ rule IntegratedFilter:
         sge_opts="-pe serial 1 -l h_rt=1:00:00 -l mfree=2G",
     shell:"""
 echo "orth_filter" > {output.intPass}
-paste {input.intPbSup} {input.intBnSup} {input.readOvp} | bioawk -c hdr '{{ if (substr($0,0,1) != "p") {{ if (($overlap > 0.70 && $number >= 3) || $pbbest > 0.5 || $bnoverlap > 0.5) {{print "PASS";}} else {{ print "FAIL";}} }} }}' >> {output.intPass}
+        paste {input.intPbSup} {input.intBnSup} {input.readOvp} | bioawk -c hdr '{{ if (substr($0,0,1) != "p") {{ if (($overlap > 0.70 && $number >= 3) || $pbbest > 0.5 || $bnoverlap < 0.1) {{print "PASS";}} else {{ print "FAIL";}} }} }}' >> {output.intPass}
 """
 
 rule AnnotateIntegratedPass:

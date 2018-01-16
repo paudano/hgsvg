@@ -100,11 +100,96 @@ rule all:
         optSummary=expand("opt_bn_overlap.bed.filt.{op}.bed.summary",op=shortOps),
         exons=expand("{sample}.exons.{op}.bed",sample=config["sample"],op=longOps),
         svfixann="fix_del/sv_calls.ann.bed",
-        svfixvcf="fix_del/sv_calls.ann.vcf"
-        
-#        randomSVs=expand("{sample}.sv_calls.random.bed",sample=config["sample"]),
-#        randomSVClusters=expand("{sample}.sv_calls.random.clusters.bed",sample=config["sample"])
+        svfixvcf="fix_del/sv_calls.ann.vcf",
+        sv_intv="sv_calls.intv",
+        sv_clust="sv_calls.clust",
+        sv_tr="sv_calls.clust.tr",
+        sv_tr_bg="sv_calls.clust.tr.bg",        
+        wide="sv_calls.clust.wide"
 
+
+        
+rule MakeSVTRRegions:
+    input:
+        clust="sv_calls.clust"
+    output:
+        wide="sv_calls.clust.wide"
+    params:
+        sge_opts=config["sge_small"],
+        ref=config["ref"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+cat {input.clust} | awk '{{ if ($4 > 3) print;}}' | \
+  bedtools intersect -loj -a stdin -b {params.sd}/../regions/tandem_repeats.bed  | \
+  bedtools groupby -g 1-3 -c 6,7 -o min,max -full | \
+  awk '{{ print $1"\\t"$9"\\t"$10; }}' | \
+  grep -v "\-1" | \
+  bedtools slop -i stdin -g {params.ref}.fai -b 2000 > {output.wide}
+"""
+    
+rule MakeSVTRClusters:
+    input:
+        clust="sv_calls.clust"
+    output:
+        tr="sv_calls.clust.tr"
+    params:
+        sge_opts=config["sge_small"],
+        ref=config["ref"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+cat {input.clust} | wc -l > {output.tr}
+bedtools intersect -a {input.clust} -b {params.sd}/../regions/tandem_repeats.bed -u | wc -l >> {output.tr}
+"""
+
+rule MakeSVTRClustersBG:
+    input:
+        clust="sv_calls.clust"
+    output:
+        tr="sv_calls.clust.tr.bg"
+    params:
+        sge_opts=config["sge_small"],
+        ref=config["ref"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+
+for i in `seq 1 100`; do
+bedtools shuffle -i {input.clust} -g {params.ref}.fai -incl {params.sd}/../regions/Regions.Called.bed | \
+  bedtools sort | \
+  bedtools merge | \
+  bedtools intersect -a stdin -b {params.sd}/../regions/tandem_repeats.bed -u | wc -l >> {output.tr}
+done
+    
+"""
+    
+    
+        
+rule MakeSVIntv:
+    input:
+        sv="sv_calls.bed",
+    output:
+        intv="sv_calls.intv"
+    params:
+        sge_opts=config["sge_small"],
+        ref=config["ref"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+cat {input.sv} | awk '{{ if ($5 == "insertion") {{ $3=$2+1;}} print;}}' | tr " " "\t" | cut -f 1-5 > {output.intv}
+"""
+
+rule MakeSVClust:
+    input:
+        intv="sv_calls.intv"
+    output:
+        clust="sv_calls.clust"
+    params:
+        sge_opts=config["sge_small"],
+        ref=config["ref"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+bedtools merge -i {input.intv} -d 1000 -c 4 -o count | awk '{{ if ($4 > 1) print;}}' > {output.clust}
+"""    
+
+    
 rule FixDelsInSVCalls:
     input:
         sv="sv_calls.bed",

@@ -35,13 +35,13 @@ $(PWD)/alignments.h0.sam: samfiles.fofn
 	$(HGSVG)/sv/CombineAssemblies.py --alignments samfiles.fofn --header $(HGSVG)/sv/header.sam
 
 $(PWD)/alignments.h0.bam: $(H0SAM)
-	-mkdir -p /var/tmp/mchaisso
-	samtools view -bS $(H0SAM) | samtools sort -T /var/tmp/mchaisso/aln.0.$$PPID -o $@
+	-mkdir -p $TMPDIR/mchaisso
+	samtools view -bS $(H0SAM) | samtools sort -T $TMPDIR/aln.0.$$PPID -o $@
 	samtools index $@
 
 $(PWD)/alignments.h1.bam: $(H0SAM)
 	-mkdir -p /var/tmp/mchaisso
-	samtools view -bS $(H1SAM) | samtools sort -T /var/tmp/mchaisso/aln.1.$$PPID -o $@
+	samtools view -bS $(H1SAM) | samtools sort -T $TMPDIR/mchaisso/aln.1.$$PPID -o $@
 	samtools index $@
 
 $(DIR)/hap0/gaps.bed: $(PWD)/alignments.h0.bam

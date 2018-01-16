@@ -22,15 +22,24 @@ for alnFileName in alignments:
     for aln in alnFile:
         vals=aln.split()
         hap = None
-        for v in vals:
-            if v == "HA:i:1":
-                hap=0
+        if vals[0].count("/") == 2:
+            titleVals = vals[0].split("/")
+            if titleVals[2] == "1":
                 h0.write(aln)
-                break                
-            elif v == "HA:i:2":
+                hap=0
+            elif  titleVals[2] == "2":
+                h0.write(aln)
                 hap=1
-                h1.write(aln)
-                continue
+        else:
+            for v in vals:
+                if v == "HA:i:1":
+                    hap=0
+                    h0.write(aln)
+                    break                
+                elif v == "HA:i:2":
+                    hap=1
+                    h1.write(aln)
+                    continue
         if hap is None:
             sys.stderr.write("ERROR, did not find haplotype for " + vals[0] + "\n")
             

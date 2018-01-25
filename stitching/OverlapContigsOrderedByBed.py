@@ -8,8 +8,8 @@ import subprocess
 ap = argparse.ArgumentParser(description="Given an alignmetn bed file, run overlaps between contigs that are near each other")
 ap.add_argument("bed", help="Alignment bed file.")
 ap.add_argument("asm", help="Assemblies file")
-ap.add_argument("--chrom", help="Process this chromosome only", default =None)
-ap.add_argument("--path", help="Path to HGSVG stitching scripts",\
+ap.add_argument("--chrom", help="Process this chromosome only.", default =None)
+ap.add_argument("--path", help="Path to HGSVG stitching scripts.",\
                 default="/net/eichler/vol5/home/mchaisso/projects/HGSVG/hgsvg/stitching")
 ap.add_argument("--ahead", help="Allow overlap betewen alignemnts ending this far ahead of current.",\
                 type=int, default=20000)

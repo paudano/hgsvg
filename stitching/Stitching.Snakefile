@@ -45,7 +45,7 @@ rule all:
         chrBed      = expand("contigs.{hap}.fasta.sam.bed", hap=haps),
 	chrBed6     = expand("contigs.{hap}.fasta.sam.bed6", hap=haps),
 	chrBB       = expand("contigs.{hap}.fasta.sam.bb", hap=haps),
-        indels      = expand("stitching_hap_gaps/hap{hap}/indels.bed", hap=shortHaps),
+        indels      = expand("stitching_hap_gaps/hap{hap}/indels.orig.bed", hap=shortHaps),
         indelVCF    = expand("stitching_hap_gaps/hap{hap}/indels.orig.vcf",hap=shortHaps),
         normVCF     = expand("stitching_hap_gaps/hap{hap}/indels.norm.vcf",hap=shortHaps),
         normBed     = expand("stitching_hap_gaps/hap{hap}/indels.norm.bed",hap=shortHaps),                
@@ -62,10 +62,9 @@ rule MakeIndels:
        sample=config["sample"],
        sd=SNAKEMAKE_DIR,
        ref=config["ref"],
-       pbs=config["pbs"]
     shell:"""
 mkdir -p stitching_hap_gaps/hap{wildcards.hap}
-{params.pbs}/PrintGaps.py {params.ref} {input.asmSam} --minLength 2 --maxLength 49 --ignoreHP 5 --outFile {output.indels}
+{params.sd}/../sv/utils/PrintGaps.py {params.ref} {input.asmSam} --minLength 2 --maxLength 49 --ignoreHP 5 --outFile {output.indels}
 """
 
 rule ConvertIndelBedToVCF:
@@ -191,7 +190,7 @@ rule MakeChrAsmBed:
         sge_opts="-l mfree=1G -pe serial 1 -l h_rt=01:00:00",
         hgsvg=SNAKEMAKE_DIR+ "/.."
     shell:
-        "/net/eichler/vol5/home/mchaisso/projects/mcutils/bin/samToBed {input.asmSam}  --reportIdentity | bedtools sort > {output.asmBed}"
+        "samToBed {input.asmSam}  --reportIdentity | bedtools sort > {output.asmBed}"
 
 rule MakeChrAsmBed6:
     input:
@@ -326,23 +325,6 @@ rule MakeAsmOverlaps:
         sge_opts="-pe serial 1 -l mfree=1G -l h_rt=1:00:00 -cwd "
     shell:
         "cat {input.splitAsmOverlaps} > {output.asmOverlap}"
-
-#rule MakeAsmOverlaps:
-#    input:
-#        bed="overlaps/overlaps.{hap}.{chrom}.ctg0.bed",
-#        asm="alignments.{hap}.bam.fasta"
-##        asmOverlap="overlaps/overlap.{hap}.{chrom}.txt"
-##        asmOverlap=AsmOverlapsWorkflow("overlaps/overlap.{hap}.{chrom}.txt")
-#    output:
-#        asmOverlapOut="overlaps/overlap.{hap}.{chrom}.txt"
-#    params:
-#        sge_opts="-l mfree=1G -pe serial 12 -l h_rt=72:00:00 -N ovp -e /dev/null -o /dev/null ",
-#        tmpdir=TMPDIR
-#    shell:
-#        "module load anaconda/20161130 ; mkdir -p overlaps/sub_snakemake.{wildcards.hap}.{wildcards.chrom}/overlaps ; cd overlaps/sub_snakemake.{wildcards.hap}.{wildcards.chrom}/overlaps; ln -s ../../../{input.bed} .; cd ..; ln -s ../../{input.asm}* .; ln -s ../../config.json .;  snakemake -cwd -p -s " + SNAKEMAKE_DIR +"/MakeAsmOverlaps.Snakefile --unlock ; snakemake -cwd -p -s " + SNAKEMAKE_DIR +"/MakeAsmOverlaps.Snakefile -j 20 --cluster \"qsub {params.sge_opts} \" {output.asmOverlapOut} --config " + " ".join(["{}={}".format(k,config[k]) for k in config.keys()] + ["bed={input.bed}"]) + "; mv -f {output.asmOverlapOut} ../;"
-#
-                                                                                                                                                          
-
 
 rule MakeContigBed:
     input:

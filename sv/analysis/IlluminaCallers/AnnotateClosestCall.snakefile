@@ -116,10 +116,12 @@ rule all:
         plotlarge=expand("MethodRecallLarge.{sample}.{svtype}.pdf",sample=config["sample"],svtype=svTypes),
         filt_caller_full=expand("int_caller_full.{svtype}.bed",svtype=svTypes),
         filt_caller=expand("int_caller.{svtype}.bed",svtype=svTypes),
-        sensUnion=expand("SensitivitySpecificity.{sample}.{svtype}.2.1.pdf",sample=config["sample"],svtype=svTypes),
+        sensUnion22=expand("SensitivitySpecificity.{sample}.{svtype}.2.2.pdf",sample=config["sample"],svtype=svTypes),
+        sensUnion=expand("SensitivitySpecificity.{sample}.{svtype}.2.1.pdf",sample=config["sample"],svtype=svTypes),        
         sensIsect=expand("SensitivitySpecificity.{sample}.{svtype}.3.2.pdf",sample=config["sample"],svtype=svTypes),
         sensIsect2=expand("SensitivitySpecificity.{sample}.{svtype}.4.2.pdf",sample=config["sample"],svtype=svTypes),
-        sensTable21=expand("SensitivitySpecificity.{sample}.{svtype}.2.1.tsv",sample=config["sample"],svtype=svTypes),        
+        sensTable21=expand("SensitivitySpecificity.{sample}.{svtype}.2.2.tsv",sample=config["sample"],svtype=svTypes),
+        sensTable20=expand("SensitivitySpecificity.{sample}.{svtype}.2.1.tsv",sample=config["sample"],svtype=svTypes),
         sensTable32=expand("SensitivitySpecificity.{sample}.{svtype}.3.2.tsv",sample=config["sample"],svtype=svTypes),
         sensTable42=expand("SensitivitySpecificity.{sample}.{svtype}.4.2.tsv",sample=config["sample"],svtype=svTypes),        
         integrated_pbfinal=expand("integrated_pbfinal_isect.{svtype}.bed",svtype=svTypes),
@@ -608,9 +610,11 @@ rule PlotSensSpec:
         filt="int_caller_full.{svtype}.bed"
     output:
         sensUnion="SensitivitySpecificity.{sample}.{svtype}.3.2.pdf",
-        sensIsect="SensitivitySpecificity.{sample}.{svtype}.2.1.pdf",
+        sensIsect="SensitivitySpecificity.{sample}.{svtype}.2.2.pdf",
+        sensUnionTwo="SensitivitySpecificity.{sample}.{svtype}.2.1.pdf",    
         sensIsect2="SensitivitySpecificity.{sample}.{svtype}.4.2.pdf",        
-        sensTable="SensitivitySpecificity.{sample}.{svtype}.2.1.tsv",
+        sensTable="SensitivitySpecificity.{sample}.{svtype}.2.2.tsv",
+        sensTable21="SensitivitySpecificity.{sample}.{svtype}.2.1.tsv",        
         sensTable42="SensitivitySpecificity.{sample}.{svtype}.4.2.tsv",
         sensTable32="SensitivitySpecificity.{sample}.{svtype}.3.2.tsv",        
     params:

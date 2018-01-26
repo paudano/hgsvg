@@ -104,6 +104,7 @@ rule all:
         sv_intv="sv_calls.intv",
         sv_clust="sv_calls.clust",
         sv_tr="sv_calls.clust.tr",
+        sv_tr_annot="sv_calls.clust.tr.annot",
         sv_tr_bg="sv_calls.clust.tr.bg",        
         wide="sv_calls.clust.wide"
 
@@ -126,7 +127,19 @@ cat {input.clust} | awk '{{ if ($4 > 3) print;}}' | \
   grep -v "\-1" | \
   bedtools slop -i stdin -g {params.ref}.fai -b 2000 > {output.wide}
 """
-    
+rule MakeSVTRClustersAnnot:
+    input:
+        clust="sv_calls.clust"
+    output:
+        tr="sv_calls.clust.tr.annot"
+    params:
+        sge_opts=config["sge_small"],
+        ref=config["ref"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+bedtools intersect -a {input.clust} -b {params.sd}/../regions/tandem_repeats.bed  -loj | bedtools groupby -g 1-3 -c 4 -o first -full > {output.tr}
+
+"""
 rule MakeSVTRClusters:
     input:
         clust="sv_calls.clust"

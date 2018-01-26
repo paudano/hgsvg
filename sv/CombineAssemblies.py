@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import argparse
 import pysam
+import os
 
 ap = argparse.ArgumentParser(description="Given a list of assembly sam files, print records into distinct sam files")
 ap.add_argument("--alignments", help="FOFN of alignments.")
@@ -17,6 +18,8 @@ h0.write(''.join(header))
 h1.write(''.join(header))
 alignments = open(args.alignments)
 for alnFileName in alignments:
+    if os.stat(alnFileName.rstrip()).st_size == 0:
+        continue
     alnFile = open(alnFileName.rstrip())
     
     for aln in alnFile:

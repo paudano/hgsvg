@@ -4,6 +4,7 @@ import sys
 import Queue
 import argparse
 import Overlap
+#import IPython
 
 ap = argparse.ArgumentParser(description="Find a path through overlap graphs")
 ap.add_argument("ovp", help="Overlap file")
@@ -194,8 +195,10 @@ def GreedyPath(g,n,o):
     print "Path length: " + str(len(path)) + " Ended at: " + path[-1]
     return path
 
+import pdb
 def DFSLongestPath(g, n, lp, lpd):
     # at dest node
+
     if len(g[n]) == 0:
         lp[n] = 1
         lpd[n] = None
@@ -221,15 +224,16 @@ def StoreLongestPath(g,n,lp,lpd):
                 
 def LongestPath(g):
     ts = nx.topological_sort(g)
-    lp = { i: -1 for i in ts }
-    lpd = { i: None for i in ts }
+    lp = { i: -1 for i in g.nodes() }
+    lpd = { i: None for i in g.nodes() }
+#    pdb.set_trace()
     for n in ts:
         if lp[n] == -1:
             DFSLongestPath(g, n, lp, lpd)
 
     longestPathLength = 0
     longestPathStart = -1
-    for n in ts:
+    for n in g.nodes():
         if lp[n] > longestPathLength:
             longestPathStart = n
             longestPathLength = lp[n]
@@ -327,7 +331,9 @@ def RemoveTransitiveEdges(g, o):
     g.remove_edges_from(transitive)
 
 g = nx.read_gml(args.graph)
-
+#IPython.embed()
+#import pdb
+#pdb.set_trace()
 overlapFile = open(args.ovp)
 pathFile = open(args.paths,'w')
 overlaps = []
@@ -360,7 +366,7 @@ for comp in components:
 
 #paths = GreedyPaths(g, overlaps)
 for p in paths:
-    pathFile.write("\t".join([str(g.node[i]['label']) for i in p]) + "\n")
+    pathFile.write("\t".join(p) + "\n")
 
 if args.tgraph is not None:
     nx.write_gml(g, args.tgraph)

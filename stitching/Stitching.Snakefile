@@ -39,18 +39,18 @@ rule all:
         asmGraphs   = expand("overlaps/overlap.{hap}.{chrom}.txt.gml", hap=haps, chrom=chroms),
         asmPaths    = expand("overlaps/overlap.{hap}.{chrom}.txt.path", hap=haps, chrom=chroms),
         asmContigs  = expand("contigs/patched.{hap}.{chrom}.fasta", hap=haps, chrom=chroms),
-	chrFasta    = expand("contigs.{hap}.fasta", hap=haps),
-	chrFastaFai = expand("contigs.{hap}.fasta.fai", hap=haps),
-	chrAln      = expand("contigs.{hap}.fasta.sam", hap=haps),
-        chrBed      = expand("contigs.{hap}.fasta.sam.bed", hap=haps),
-	chrBed6     = expand("contigs.{hap}.fasta.sam.bed6", hap=haps),
-	chrBB       = expand("contigs.{hap}.fasta.sam.bb", hap=haps),
-        indels      = expand("stitching_hap_gaps/hap{hap}/indels.orig.bed", hap=shortHaps),
-        indelVCF    = expand("stitching_hap_gaps/hap{hap}/indels.orig.vcf",hap=shortHaps),
-        normVCF     = expand("stitching_hap_gaps/hap{hap}/indels.norm.vcf",hap=shortHaps),
-        normBed     = expand("stitching_hap_gaps/hap{hap}/indels.norm.bed",hap=shortHaps),                
-        annotation  = "stitching_hap_gaps/diploid/insertions.bed",
-        indelBed    ="stitching_hap_gaps/diploid/indels.bed"
+#	chrFasta    = expand("contigs.{hap}.fasta", hap=haps),
+#	chrFastaFai = expand("contigs.{hap}.fasta.fai", hap=haps),
+#	chrAln      = expand("contigs.{hap}.fasta.sam", hap=haps),
+#        chrBed      = expand("contigs.{hap}.fasta.sam.bed", hap=haps),
+#	chrBed6     = expand("contigs.{hap}.fasta.sam.bed6", hap=haps),
+#	chrBB       = expand("contigs.{hap}.fasta.sam.bb", hap=haps),
+#        indels      = expand("stitching_hap_gaps/hap{hap}/indels.orig.bed", hap=shortHaps),
+#        indelVCF    = expand("stitching_hap_gaps/hap{hap}/indels.orig.vcf",hap=shortHaps),
+#        normVCF     = expand("stitching_hap_gaps/hap{hap}/indels.norm.vcf",hap=shortHaps),
+#        normBed     = expand("stitching_hap_gaps/hap{hap}/indels.norm.bed",hap=shortHaps),                
+#        annotation  = "stitching_hap_gaps/diploid/insertions.bed",
+#        indelBed    ="stitching_hap_gaps/diploid/indels.bed"
         
 rule MakeIndels:
     input:
@@ -311,7 +311,8 @@ rule MakeContigBed:
     shell:
         """for c in {} ; do  
         egrep \"^$c\t\" {{input.asmBed}} > overlaps/overlaps.{{wildcards.hap}}.$c.bed;
-        grep -P "/0\\t"  overlaps/overlaps.{{wildcards.hap}}.$c.bed > overlaps/overlaps.{{wildcards.hap}}.$c.ctg0.bed;
+        h=`echo {{wildcards.hap}}| tr -d "h"`;
+        grep -P "/$h\\t"  overlaps/overlaps.{{wildcards.hap}}.$c.bed > overlaps/overlaps.{{wildcards.hap}}.$c.ctg0.bed;
         done
         true """.format(" ".join(chroms))
     

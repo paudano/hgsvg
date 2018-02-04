@@ -4,6 +4,7 @@ import argparse
 from multiprocessing import Process, Lock, Semaphore, Pool
 import sys
 import subprocess
+import IPython
 
 ap = argparse.ArgumentParser(description="Given an alignmetn bed file, run overlaps between contigs that are near each other")
 ap.add_argument("bed", help="Alignment bed file.")
@@ -50,6 +51,7 @@ alignments = alignments[start:last]
 commands = []
 def Run(command):
     res = subprocess.check_output(command, shell=True)
+    
     return res.rstrip()
 
 if args.blasr is not None:
@@ -81,7 +83,30 @@ if len(commands) == 0:
 # Now process alignments
 #
 pool = Pool(args.nproc)
+ovps=[]
+res=pool.map_async(Run, commands, callback=ovps.append )
 
-ovp = pool.map(Run, commands)
-pool.close()
-outFile.write("\n".join(ovp)+"\n")
+res.wait(60*15)
+filt=[]
+def GetStarts(l):
+    vals=l.split()
+    v1=vals[0].split(":")[1].split("-")[0]
+    v2=vals[3].split(":")[1].split("-")[0]
+    return ((int(v1), int(v2)))
+
+
+def Compare(a,b):
+    sa=GetStarts(a)
+    sb=GetStarts(b)
+    if (sa[0] != sb[0]):
+        return sa[0] < sb[0]
+    else:
+        return sa[1] < sb[1]
+
+for ovp in ovps[0]:
+    if ovp != "\n" and ovp != "":
+        filt.append(ovp)
+    
+filt.sort(cmp=Compare)
+
+outFile.write("\n".join(filt)+"\n")

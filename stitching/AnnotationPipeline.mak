@@ -108,6 +108,8 @@ deletions.bb: deletions.bed
 	cut -f 1-3 $^ | egrep -v "Un|GL|KI" | $(HGSVC)/stitching/TruncateInsertions.py $(REF).fai |  bedtools sort > deletions.lim.bed
 	bedToBigBed deletions.lim.bed $(REF).fai $@
 
+indels.bed: $(GAPS) 
+	$(PBS)/PrintGaps.py $(REF) $(ALIGNMENTS) --outFile $@ --ignoreHP 100 --minLength 2 --maxLength 50
 
 
 clean:

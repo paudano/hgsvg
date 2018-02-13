@@ -1,4 +1,3 @@
-import os
 import tempfile
 
 #
@@ -39,18 +38,20 @@ rule all:
         asmGraphs   = expand("overlaps/overlap.{hap}.{chrom}.txt.gml", hap=haps, chrom=chroms),
         asmPaths    = expand("overlaps/overlap.{hap}.{chrom}.txt.path", hap=haps, chrom=chroms),
         asmContigs  = expand("contigs/patched.{hap}.{chrom}.fasta", hap=haps, chrom=chroms),
-#	chrFasta    = expand("contigs.{hap}.fasta", hap=haps),
-#	chrFastaFai = expand("contigs.{hap}.fasta.fai", hap=haps),
-#	chrAln      = expand("contigs.{hap}.fasta.sam", hap=haps),
-#        chrBed      = expand("contigs.{hap}.fasta.sam.bed", hap=haps),
-#	chrBed6     = expand("contigs.{hap}.fasta.sam.bed6", hap=haps),
-#	chrBB       = expand("contigs.{hap}.fasta.sam.bb", hap=haps),
-#        indels      = expand("stitching_hap_gaps/hap{hap}/indels.orig.bed", hap=shortHaps),
-#        indelVCF    = expand("stitching_hap_gaps/hap{hap}/indels.orig.vcf",hap=shortHaps),
-#        normVCF     = expand("stitching_hap_gaps/hap{hap}/indels.norm.vcf",hap=shortHaps),
-#        normBed     = expand("stitching_hap_gaps/hap{hap}/indels.norm.bed",hap=shortHaps),                
-#        annotation  = "stitching_hap_gaps/diploid/insertions.bed",
-#        indelBed    ="stitching_hap_gaps/diploid/indels.bed"
+        asmSam      = expand("alignments.{hap}.sam",hap=haps),
+        asmBam      = expand("alignments.{hap}.bam",hap=haps),
+	chrFasta    = expand("contigs.{hap}.fasta", hap=haps),
+	chrFastaFai = expand("contigs.{hap}.fasta.fai", hap=haps),
+	chrAln      = expand("contigs.{hap}.fasta.sam", hap=haps),
+        chrBed      = expand("contigs.{hap}.fasta.sam.bed", hap=haps),
+	chrBed6     = expand("contigs.{hap}.fasta.sam.bed6", hap=haps),
+	chrBB       = expand("contigs.{hap}.fasta.sam.bb", hap=haps),
+        indels      = expand("stitching_hap_gaps/hap{hap}/indels.orig.bed", hap=shortHaps),
+        indelVCF    = expand("stitching_hap_gaps/hap{hap}/indels.orig.vcf",hap=shortHaps),
+        normVCF     = expand("stitching_hap_gaps/hap{hap}/indels.norm.vcf",hap=shortHaps),
+        normBed     = expand("stitching_hap_gaps/hap{hap}/indels.norm.bed",hap=shortHaps),                
+        annotation  = "stitching_hap_gaps/diploid/insertions.bed",
+        indelBed    = "stitching_hap_gaps/diploid/indels.bed"
         
 rule MakeIndels:
     input:
@@ -171,7 +172,7 @@ rule MakeContigAsmAln:
         td=TMPDIR
         
     shell:"""
-{params.sd}/MapContigs.py --contigs {input.asmFasta} --ref {params.ref} --tmpdir $TMPDIR --blasr blasr --out {output.asmSam} --nproc 4
+{params.sd}/MapContigs.py --contigs {input.asmFasta} --ref {params.ref} --tmpdir $TMPDIR --blasr {params.sd}/../blasr/alignment/bin/blasr --out {output.asmSam} --nproc 4
 """
 
 rule MakeChrAsmBed:
@@ -312,9 +313,35 @@ rule MakeContigBed:
         """for c in {} ; do  
         egrep \"^$c\t\" {{input.asmBed}} > overlaps/overlaps.{{wildcards.hap}}.$c.bed;
         h=`echo {{wildcards.hap}}| tr -d "h"`;
-        grep -P "/$h\\t"  overlaps/overlaps.{{wildcards.hap}}.$c.bed > overlaps/overlaps.{{wildcards.hap}}.$c.ctg0.bed;
+        grep -P "/0\\t"  overlaps/overlaps.{{wildcards.hap}}.$c.bed > overlaps/overlaps.{{wildcards.hap}}.$c.ctg0.bed;
         done
         true """.format(" ".join(chroms))
+
+
+
+rule MakeAlnBam:
+    input:
+        asmFofn="alignments.fofn"
+    output:
+        alnSam=expand("alignments.{hap}.sam",hap=haps)
+    params:
+        sge_opts=config["grid_small"],
+        sd=SD
+    shell:"""
+{params.sd}/../sv/CombineAssemblies.py --alignments {input.asmFofn} --header {params.sd}/header.sam
+"""
+
+rule MakeBam:
+    input:
+        asmSam="alignments.{hap}.sam"
+    output:
+        asmBam="alignments.{hap}.bam"
+    params:
+        sge_opts=config["grid_small"]
+    shell:"""
+samtools view -bS {input.asmSam} | samtools sort -T $TMPDIR/hap.{wildcards.hap} -o {output.asmBam}
+samtools index {output.asmBam}
+"""
     
 rule MakeAsmBed:
     input:

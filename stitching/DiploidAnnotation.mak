@@ -54,11 +54,10 @@ $(DIR)/hap0/deletions.bed: $(DIR)/hap0/$(GAPS)
 $(DIR)/hap1/deletions.bed: $(DIR)/hap1/$(GAPS)
 	cd $(DIR)/hap1 && make -f $(HGSVG)/stitching/AnnotationPipeline.mak GAPS=$(GAPS) ALIGNMENTS=$(PWD)/$(H1SAM)
 
-
-$(DIR)/hap0/indels.bed: $(ALIGNMENTS)
+$(DIR)/hap0/indels.bed:
 	cd $(DIR)/hap0 && make -f $(HGSVG)/stitching/AnnotationPipeline.mak GAPS=$(GAPS) ALIGNMENTS=$(PWD)/$(H0SAM) indels.bed SAMPLE=$(SAMPLE)
 
-$(DIR)/hap1/indels.bed: $(ALIGNMENTS)
+$(DIR)/hap1/indels.bed:
 	cd $(DIR)/hap1 && make -f $(HGSVG)/stitching/AnnotationPipeline.mak GAPS=$(GAPS) ALIGNMENTS=$(PWD)/$(H1SAM) indels.bed SAMPLE=$(SAMPLE)
 
 $(DIR)/diploid/indels.bed: $(DIR)/hap0/indels.bed $(DIR)/hap1/indels.bed

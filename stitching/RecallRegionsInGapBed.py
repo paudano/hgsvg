@@ -22,7 +22,7 @@ ap.add_argument("--ngmlr", help="Use ngmlr to realign region.",default=None, typ
 ap.add_argument("--indels", help="Store indels here.", default=None)
 ap.add_argument("--indelDir", help="Store indels here.", default="indels")
 ap.add_argument("--commands", help="Write commands and exit", default=None)
-
+ap.add_argument("--blasr", help="default blasr to run, defaults to system", default="blasr")
 args = ap.parse_args()
 
 gapFile= open(args.gaps)
@@ -163,7 +163,7 @@ while i <len(gaps):
         asmOption = " --asm " + args.asm
     
     refLen = rEndExp - rStartExp
-    command = ('/net/eichler/vol5/home/mchaisso/projects/HGSVG/hgsvg/stitching/RecallRegion.py  {} --ref {} --asmRegion \"{}\" --window 0 --refRegion {} --index {} --ngaps {} {} --minAlignLength {} {} {} --header {} ##SEP##{}'.format(asmOption, args.ref, aRegion, rRegion, i, clusterSize, keep, int(0.75*refLen) , ngmlr, indelsOption, headerStr, gapLines))
+    command = ('/net/eichler/vol5/home/mchaisso/projects/HGSVG/hgsvg/stitching/RecallRegion.py  {} --ref {} --asmRegion \"{}\" --window 0 --refRegion {} --index {} --ngaps {} {} --minAlignLength {} {} {} --header {} --blasr {} ##SEP##{}'.format(asmOption, args.ref, aRegion, rRegion, i, clusterSize, keep, int(0.75*refLen) , ngmlr, indelsOption, headerStr, args.blasr, gapLines))
 
     recallCommands.append(command)
 

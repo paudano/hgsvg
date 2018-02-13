@@ -4,7 +4,7 @@ import argparse
 from multiprocessing import Process, Lock, Semaphore, Pool
 import sys
 import subprocess
-import IPython
+
 
 ap = argparse.ArgumentParser(description="Given an alignmetn bed file, run overlaps between contigs that are near each other")
 ap.add_argument("bed", help="Alignment bed file.")

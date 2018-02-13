@@ -135,8 +135,6 @@ def DFSOverlaps(g,n,o,c,d, prevOverlap=None):
         # If the middle regions of the alignments do not have proper overlap (the prev mid must
         # end before the cur mid).
         #
-        import pdb
-        pdb.set_trace()
         if prevOverlap is not None and prevOverlap.bMidOvp[1] >= curOverlap.aMidOvp[1]:
             sys.stderr.write("Skipping " + str(curOverlap) + "\n")
             continue
@@ -195,7 +193,6 @@ def GreedyPath(g,n,o):
     print "Path length: " + str(len(path)) + " Ended at: " + path[-1]
     return path
 
-import pdb
 def DFSLongestPath(g, n, lp, lpd):
     # at dest node
 
@@ -332,8 +329,6 @@ def RemoveTransitiveEdges(g, o):
 
 g = nx.read_gml(args.graph)
 #IPython.embed()
-#import pdb
-#pdb.set_trace()
 overlapFile = open(args.ovp)
 pathFile = open(args.paths,'w')
 overlaps = []

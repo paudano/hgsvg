@@ -49,7 +49,7 @@ def GetN(seq):
         return (len(g[0]), len(seq.seq) - len(g[1]))
 
 
-command = "{} {} {} -bestn 1 -sam -out {} -clipping soft -maxMatch 20 -sdpMaxAnchorsPerPosition 3 -advanceExactMatches 10 -sdpTupleSize 13 -extend -maxExtendDropoff 50 -preserveReadTitle ".format(args.blasr, aTempFile.name, bTempFile.name, samTempFile.name)
+command = "{} {} {} -nproc 4 -bestn 1 -sam -out {} -clipping soft -maxMatch 20 -sdpMaxAnchorsPerPosition 3 -advanceExactMatches 10 -sdpTupleSize 13 -extend -maxExtendDropoff 50 -preserveReadTitle ".format(args.blasr, aTempFile.name, bTempFile.name, samTempFile.name)
 #sys.stderr.write(command + "\n")
 subprocess.call(command.split())
 

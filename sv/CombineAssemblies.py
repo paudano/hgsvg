@@ -2,7 +2,6 @@
 import argparse
 import pysam
 import os
-
 ap = argparse.ArgumentParser(description="Given a list of assembly sam files, print records into distinct sam files")
 ap.add_argument("--alignments", help="FOFN of alignments.")
 ap.add_argument("--header", help="Header to use.")
@@ -31,8 +30,9 @@ for alnFileName in alignments:
                 h0.write(aln)
                 hap=0
             elif  titleVals[2] == "2":
-                h0.write(aln)
+                h1.write(aln)
                 hap=1
+            sys.stderr.write(vals[0]  + "\t" + str(hap) + "\n")
         else:
             for v in vals:
                 if v == "HA:i:1":

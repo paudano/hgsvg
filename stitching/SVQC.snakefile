@@ -102,7 +102,7 @@ module unload anaconda;
 module load python/2.7.3;
 mkdir -p SVQC/hap{wildcards.hap};
 mkdir -p SVQC/hap{wildcards.hap}/indels;
-{params.sd}/RecallRegionsInGapBed.py --asm {input.asm} --ref {params.ref} --gaps {input.gaps} --out {output.recalled} --nproc 12 --refRegions SVQC/hap{wildcards.hap}/split/regions.recalled.ref.{wildcards.id} --ngmlr {params.ngmlr_cutoff} --indels {output.recalled}.indel.bed --indelDir SVQC/hap{wildcards.hap}/indels
+{params.sd}/RecallRegionsInGapBed.py --asm {input.asm} --ref {params.ref} --gaps {input.gaps} --out {output.recalled} --nproc 12 --refRegions SVQC/hap{wildcards.hap}/split/regions.recalled.ref.{wildcards.id} --ngmlr {params.ngmlr_cutoff} --indels {output.recalled}.indel.bed --indelDir SVQC/hap{wildcards.hap}/indels --blasr {params.sd}/../blasr/alignment/bin/blasr
 
 """
 
@@ -367,7 +367,7 @@ rule AnnotateSVGaps:
         sge_opts="-cwd -pe serial 8 -l mfree=2G -l h_rt=04:00:00 -l disk_free=4G",
         sd=SNAKEMAKE_DIR
     shell:"""
-module unload anaconda; module load python/2.7.3; module load bedtools/latest; module load numpy/1.11.0;
+
 make -f {params.sd}/SVQC.DiploidAnnotation.mak GAPS=gaps.bed.support DIR={wildcards.dir}
 """
 

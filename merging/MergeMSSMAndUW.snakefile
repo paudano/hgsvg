@@ -1176,7 +1176,7 @@ rule GenotypeParents:
     output:
         parent="parent.cov.{pa}.bed"
     params:
-        sge_opts="-pe serial 8 -l mfree=1G -l h_rt=08:00:00",
+        sge_opts="-pe serial 4 -l mfree=1G -l h_rt=08:00:00",
         ref=config["ref"],
         faBam=config["faBams"],
         moBam=config["moBams"]

@@ -15,7 +15,7 @@ import sys
 
 ap = argparse.ArgumentParser(description="Given a gaps.bed file, splice variants into the reference, remap reads to this, and count gaps. ")
 ap.add_argument("--gaps",   help="Gaps file (can be insertions and deletions).", required=True)
-ap.add_argument("--ref",    help="Reference file.", required=False)
+ap.add_argument("--ref",    help="Reference file.", required=True)
 ap.add_argument("--reads",  help="FOFN of aligned reads.", required=False)
 ap.add_argument("--flank",  help="Use this amount of the reference when aligning reads", default=900,type=int)
 ap.add_argument("--window", help="Collect all gaps within this window.", type=int, default=1000)

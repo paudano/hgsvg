@@ -226,7 +226,7 @@ def LongestPath(g):
     ts = nx.topological_sort(g)
     lp = { i: -1 for i in g.nodes() }
     lpd = { i: None for i in g.nodes() }
-#    pdb.set_trace()
+
     for n in ts:
         if lp[n] == -1:
             DFSLongestPath(g, n, lp, lpd)
@@ -331,9 +331,6 @@ def RemoveTransitiveEdges(g, o):
     g.remove_edges_from(transitive)
 
 g = nx.read_gml(args.graph)
-#IPython.embed()
-#import pdb
-#pdb.set_trace()
 overlapFile = open(args.ovp)
 pathFile = open(args.paths,'w')
 overlaps = []
@@ -357,14 +354,7 @@ for comp in components:
 #    greedyPaths=GreedyPaths(subgraph, overlaps)
     longestPath=LongestPath(subgraph)
     paths.append(longestPath)
-#    for p in greedyPaths:
-#        print "greedy\t" + str(len(p)) + "\t" + str(p)
-#    print "longest\t" + str(len(longestPath)) + "\t" + str(longestPath)
-    
-#    nx.write_gml(subgraph, "subgraph.gml")
-#    sys.exit(0)
 
-#paths = GreedyPaths(g, overlaps)
 for p in paths:
     pathFile.write("\t".join(p) + "\n")
 

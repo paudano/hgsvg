@@ -18,6 +18,7 @@ fai = Tools.ReadFAIFile(args.fai)
 for line in bedIn:
     vals = line.split()
     if vals[0][0] == "#":
+        bedOut.write(line)
         continue
     if (vals[0] in fai):
 	vals[args.col] = str(min(int(vals[args.col]), fai[vals[0]][0]))

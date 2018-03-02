@@ -24,8 +24,7 @@ ref      = pysam.FastaFile(args.ref)
 outFile = open(args.out,'w')
 
 def Run(files):
-
-    command = "{} {} {} -bestn 1 -sam -out {} -clipping soft  -preserveReadTitle -alignContigs ".format(args.blasr, \
+    command = "{} {} {} -minMapQV 30 -minAlignLength 10000 -sam -out {} -clipping soft  -preserveReadTitle -alignContigs ".format(args.blasr, \
                                                                                                         files[0],\
                                                                                                         files[1],\
                                                                                                         files[2])

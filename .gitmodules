@@ -1,3 +1,6 @@
 [submodule "blasr"]
 	path = blasr
 	url = https://github.com/mchaisso/blasr.git
+[submodule "mcutils"]
+	path = mcutils
+	url = https://github.com/mchaisso/mcutils

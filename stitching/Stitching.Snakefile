@@ -164,13 +164,12 @@ rule MakeContigAsmAln:
     input:
         asmFasta="contigs/patched.{hap}.{chrom}.fasta"
     output:
-        asmSam=temp("contigs/patched.{hap}.{chrom}.fasta.sam")
+        asmSam="contigs/patched.{hap}.{chrom}.fasta.sam"
     params:
         sge_opts=config["grid_quad"],
     	ref=config['ref'],
         sd=SD,
-        td=TMPDIR
-        
+        td=TMPDIR        
     shell:"""
 {params.sd}/MapContigs.py --contigs {input.asmFasta} --ref {params.ref} --tmpdir $TMPDIR --blasr {params.sd}/../blasr/alignment/bin/blasr --out {output.asmSam} --nproc 4
 """

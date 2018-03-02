@@ -93,7 +93,8 @@ else:
     svLenI = 4
 
 headerStr = "__HEADER__".join(headerVals)
-
+#import pdb
+#pdb.set_trace()
 while i <len(gaps):
     j=i
     maxGap = int(gaps[i][svLenI])
@@ -108,23 +109,32 @@ while i <len(gaps):
         gapLines="#"+"%".join(headerVals) + ";"
     
     gapLines += "%".join(gaps[i])
+    #
+    # as long as the next gap ends within the window of this gap, advance to include mor gaps to recall
+    #
+    maxGap=max(2*int(gaps[j][4]),args.window)
+    maxWindow=max(2*int(gaps[j][svLenI]),args.window)
     while j + 1 < len(gaps) and \
-         int(gaps[j][tEndI]) + int(gaps[j][svLenI]) + max(2*int(gaps[j][svLenI]),args.window) > int(gaps[j+1][tStartI]) and \
+         int(gaps[j][tEndI]) + int(gaps[j][svLenI]) + maxWindow > int(gaps[j+1][tStartI]) and \
          gaps[j][chromI] == gaps[j+1][chromI] and \
          gaps[j][qNameI] == gaps[j+1][qNameI]:
          maxGap=max(maxGap,int(gaps[j][svLenI]))
+
          j+=1
          clusterSize+=1
          gapLines+=";"+"%".join(gaps[j])
+         rEndWindow=max(2*int(gaps[j][svLenI]),maxWindow)         
          gapGroups[-1].append(gaps[j])
          
 #    sys.stderr.write( str(int(gaps[j][2]) + args.window - int(gaps[i][1]) + args.window ) + "\t" + str(maxGap) + "\n")
 #    sys.stderr.write("Validating " + str(j-i+1) + " sites.\n")
-    window = max(2*maxGap, args.window/2)
-
-    (rStartExp, rEndExp) = ExpandRegion(gaps[i][chromI], int(gaps[i][tStartI]), int(gaps[j][tEndI]), refFai, window)
+#    sys.stderr.write("\n\nstarting at " + str(i) + "\n")
+#    sys.stderr.write("\n".join(gapLines.split(";")))
+    
+    (rStartExp, rEndExp) = ExpandRegion(gaps[i][chromI], int(gaps[i][tStartI]), int(gaps[j][tEndI]), refFai, maxWindow)
+ 
     if asmFai is not None:
-        (aStartExp, aEndExp) = ExpandRegion(gaps[i][qNameI], int(gaps[i][qStartI]), int(gaps[j][qEndI]), asmFai, window)
+        (aStartExp, aEndExp) = ExpandRegion(gaps[i][qNameI], int(gaps[i][qStartI]), int(gaps[j][qEndI]), asmFai, maxWindow)
     else:
         aStartExp = int(gaps[i][qStartI]) - window
         aEndExp   = int(gaps[i][qEndI]) + window
@@ -133,6 +143,9 @@ while i <len(gaps):
     rStartExp = max(rStartExp, prevREnd)
     aStartExp = max(aStartExp, prevAEnd)
 
+    #
+    # Check to see if this region has already been recalled.
+    #
     if rStartExp > rEndExp or aStartExp > aEndExp:
         i=j+1
         continue
@@ -170,7 +183,8 @@ while i <len(gaps):
     i=j+1
     prevREnd = rEndExp
     prevAEnd = aEndExp
-
+#    sys.stderr.write("recall_command " + command + "\n")
+    
 if args.commands is not None:
     cf = open(args.commands, 'w')
     cf.write("\n".join(recallCommands) + "\n")
@@ -208,7 +222,7 @@ def Run(command):
     gapLinesFile.write(commandTuple[1])
     gapLinesFile.close()
     commandTuple[0] += " --gapLines " + gapLinesFile.name
-    sys.stderr.write(commandTuple[0] + "\n")    
+#    sys.stderr.write(commandTuple[0] + "\n")    
     res = subprocess.check_output(commandTuple[0], shell=True)
     if args.keep is False:
         cleanup = "rm -f {}".format(gapLinesFile.name)

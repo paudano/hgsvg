@@ -16,12 +16,17 @@ ap.add_argument("--out", help="Output file.", default="/dev/stdout")
 args = ap.parse_args()
 inFile = open(args.table)
 outFile = open(args.out,'w')
-tab = pd.read_table(inFile, keep_default_na=False)#, header=None, usecols=columns, names=names)
+
+tab = pd.read_table(inFile, keep_default_na=False, index_col=False)#, header=None, usecols=columns, names=names)
+
 for col in args.cols:
     if col not in tab:
         sys.stderr.write("ERROR! Could not find " + col + " in " + args.table + "\n")
         sys.exit(1)
+
 sub = tab[args.cols]
+#import pdb
+#pdb.set_trace()
 headerList = args.cols[:]
 headerList[0] = "#"+ headerList[0]
 sub.columns = headerList

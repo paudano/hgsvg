@@ -29,8 +29,11 @@ shell.prefix(". {SNAKEMAKE_DIR}/config.sh; ")
 
 haps=["h0","h1"]
 parents=["fa", "mo"]
+mssmHaps=["1", "2"]
 
 allMSSM = [config["mssm-h0"],config["mssm-h1"],config["mssm-dn"]]
+mssmhap = [config["mssm-h0"],config["mssm-h1"]]
+
 fullMSSM={ os.path.basename(f) : f for f in allMSSM}
 allMSSMBase = {f: os.path.basename(f) for f in allMSSM}
 mssmBaseToPath = {os.path.basename(f): f for f in allMSSM}
@@ -39,7 +42,7 @@ longOps=["deletion","insertion"]
 shortOps=["del","ins"]
 filtered=["uw.bed.filt", "mssm.bed.filt"]
 #shortOpToBnOp = { "del": "DEL", "ins" : "INS" }
-
+gapdir=config["gapdir"]
 rule all:
     input:
         mssmLocal  = expand("local.{mssm}", mssm=allMSSMBase.values()),
@@ -48,7 +51,7 @@ rule all:
         mssmBnSupport=expand("bn_support.{mssm}.tab",mssm=allMSSMBase.values()),
         mssmBPSupport=expand("{mssm}.uw.cov",mssm=allMSSMBase.values()),
         mssmToUWFilt = expand("{mssm}.uw.bed.filt",mssm=allMSSMBase.values()),
-        mssmToUWFiltAnnotated = expand("{mssm}.uw.bed.filt.annotated",mssm=allMSSMBase.values()), 
+#        mssmToUWFiltAnnotated = expand("{mssm}.uw.bed.filt.annotated",mssm=allMSSMBase.values()), 
         mssmBNAnnotation   = expand("{mssm}.uw.bed.bn",mssm=allMSSMBase.values()),
         bnCalls="calls_bn.bed",
         bnCallsOp=expand("calls_bn.{op}.bed",op=longOps),
@@ -70,6 +73,7 @@ rule all:
         clusterCount=[config["uwsv"]+".cluster-count"] + expand("{mssm}.uw.cluster-count",mssm=allMSSMBase.values()),
         clusterSummary="cluster-summary.txt",
         mergedBed="sv_calls.bed",
+        mergedBedWithLoci="sv_calls.bed.loci",        
         svMSSMSource="sv_calls.base.bed",
         clusteredSVs="cluster-count.tsv",
         svUWSource="sv_calls.uw-source.bed",
@@ -106,9 +110,34 @@ rule all:
         sv_tr="sv_calls.clust.tr",
         sv_tr_annot="sv_calls.clust.tr.annot",
         sv_tr_bg="sv_calls.clust.tr.bg",        
-        wide="sv_calls.clust.wide"
+        wide="sv_calls.clust.wide",
+        comb=expand("{mssm}.hap{hap}.bed.uw.bed.filt.comb",mssm=config["sample"],hap=mssmHaps),        
+        trNet=expand(gapdir+"/hap{hap}/tr_net.tab",hap=mssmHaps),
+        trZyg=expand(gapdir+"/hap{hap}/tr_net.tab.zyg",hap=mssmHaps),
+        trZygBed=expand(gapdir+"/hap{hap}/tr_net.tab.zyg.bed",hap=mssmHaps),
+        hapInDir=expand(gapdir+"/hap{hap}/gaps.recalled",hap=mssmHaps),
+        hapInDirFilt=expand(gapdir+"/hap{hap}/gaps.recalled.filt",hap=mssmHaps),        
+        filtTR=expand(gapdir+"/hap{hap}/gaps.recalled.noclust.tr_bed",hap=mssmHaps),
+        notr=expand(gapdir+"/hap{hap}/gaps.recalled.noclust.notr",hap=mssmHaps),
+        hettr=expand(gapdir+"/hap{hap}/gaps.recalled.noclust.hettr",hap=mssmHaps),
+        gapsClust=expand(gapdir+"/hap{hap}/gaps.recalled.clust",hap=mssmHaps),
+        gapsNoClust=expand(gapdir+"/hap{hap}/gaps.recalled.noclust",hap=mssmHaps),
+        dipClusters=gapdir+"/dip_tr_clusters.bed"
 
 
+rule AddSVQCLoci:
+    input:
+        svcalls="sv_calls.bed",
+        loci="../SVQC/tr_clusters.calls.bed"
+    output:
+        comb="sv_calls.bed.loci"
+    params:
+        sge_opts=config["sge_small"],
+        ref=config["ref"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+{params.sd}/MergeFiles.py --files {input.svcalls} {input.loci} --out {output.comb}
+"""    
         
 rule MakeSVTRRegions:
     input:
@@ -186,7 +215,7 @@ rule MakeSVIntv:
         ref=config["ref"],
         sd=SNAKEMAKE_DIR,
     shell:"""
-cat {input.sv} | awk '{{ if ($5 == "insertion") {{ $3=$2+1;}} print;}}' | tr " " "\t" | cut -f 1-5 > {output.intv}
+cat {input.sv} | awk '{{ if ($5 == "insertion") {{ $3=$2+1;}} print;}}' | tr " " "\\t" | cut -f 1-5 > {output.intv}
 """
 
 rule MakeSVClust:
@@ -199,7 +228,7 @@ rule MakeSVClust:
         ref=config["ref"],
         sd=SNAKEMAKE_DIR,
     shell:"""
-bedtools merge -i {input.intv} -d 1000 -c 4 -o count | awk '{{ if ($4 > 1) print;}}' > {output.clust}
+bedtools merge -header -i {input.intv} -d 1000 -c 4 -o count | awk '{{ if ($4 > 1) print;}}' > {output.clust}
 """    
 
     
@@ -378,8 +407,8 @@ rule SummarizeBestBNOverlap:
     shell:"""
 mspac=`cat {input.optCalls} | bioawk -c hdr '{{ if ($opSource == "mssm" ) print $bnsvlen; }}' | {params.sd}/stats.py --noround --noheader`
 phasedsv=`cat {input.optCalls} | bioawk -c hdr '{{ if ($opSource == "uw" ) print $bnsvlen; }}' | {params.sd}/stats.py --noround --noheader`
-echo {params.sample} "mspac" {wildcards.op} $mspac | tr " " "\t" > {output.optSummary}
-echo {params.sample} "phasedsv" {wildcards.op} $phasedsv | tr " " "\t" >> {output.optSummary}
+echo {params.sample} "mspac" {wildcards.op} $mspac | tr " " "\\t" > {output.optSummary}
+echo {params.sample} "phasedsv" {wildcards.op} $phasedsv | tr " " "\\t" >> {output.optSummary}
 """
 
     
@@ -452,11 +481,12 @@ rule SplitMSSM:
     params:
         sge_opts="-pe serial 8 -l mfree=1G -l h_rt=04:00:00",
         sd=SNAKEMAKE_DIR,
-        n=config["n"]
+        n=config["n"],
+        ref=config["ref"]
     shell:"""
-module unload anaconda; module unload python/3.5.2; module load python/2.7.3; mkdir -p {wildcards.mssm}.sorted.split; {params.sd}/../sv/utils/SpliceVariantsAndCoverageValidate.py --gaps {input.mssm} --split {params.n} --splitDir {wildcards.mssm}.sorted.split --tmpdir $TMPDIR
+module unload anaconda; module unload python/3.5.2; module load python/2.7.3; mkdir -p {wildcards.mssm}.sorted.split; {params.sd}/../sv/utils/SpliceVariantsAndCoverageValidate.py --gaps {input.mssm} --split {params.n} --splitDir {wildcards.mssm}.sorted.split --tmpdir $TMPDIR --ref {params.ref} --blasr {params.sd}/../blasr/alignment/bin/blasr 
 """
-        
+
     
 rule MakeMSSMSupport:
     input:
@@ -466,16 +496,19 @@ rule MakeMSSMSupport:
         cov="{mssm}.sorted.split/gaps_sup.{id}.cov"
     params:
         sge_opts="-pe serial 8 -l mfree=1G -l h_rt=04:00:00",
-        ref=config["ref"]
-    shell:
-        "module unload anaconda; module load python/2.7.3; "+SNAKEMAKE_DIR+"/../sv/utils/SpliceVariantsAndCoverageValidate.py  --gaps {input.mssm} --reads {input.reads} --out {output.cov} --nproc 12 --ref {params.ref} --tmpdir $TMPDIR --maxSize 200000"
+        ref=config["ref"],
+        sd=SNAKEMAKE_DIR
+    shell:"""
+{params.sd}/../sv/utils/SpliceVariantsAndCoverageValidate.py  --gaps {input.mssm} --reads {input.reads} --out {output.cov} --nproc 12 --ref {params.ref} --tmpdir $TMPDIR --maxSize 50000 --flank 2000 --window 1000 --blasr {params.sd}/../blasr/alignment/bin/blasr
+"""
+
 
 rule CombineMSSMTables:
     input:
         mssmGaps="{mssm}.sorted.split/gaps.bed.{id}",    
         mssmCov="{mssm}.sorted.split/gaps_sup.{id}.cov",
     output:
-        mssmComb="{mssm}.sorted.split/gaps_cov.{id}",    
+        mssmComb="{mssm}.sorted.split/gaps_cov.{id}",
     params:
         sge_opts="-pe serial 1 -l mfree=1G -l h_rt=01:00:00",
         ref=config["ref"]
@@ -557,16 +590,16 @@ rule MakeMSSMFilteringReport:
     shell:"""
   paste {input.mssmCov} {input.bnSupport} | \
     bioawk -c hdr \
- 'BEGIN {{ qcPass=0; altPass=0;  }} {{ if (substr($0,0,1) == "#") {{ print "qcPass\\taltPass"; }} \
+ 'BEGIN {{ qcPass=0; altPass=0;  }} {{ if (NR==1) {{ print "qcPass\\taltPass"; }} \
      else {{ \
-       if (((substr($mssmQC,0,4) == "PASS" || $mssmQC == "hap2_resolved_P" || $mssmQC == "hap1_resolved_P") )) {{ \
+       if (((substr($mssmQC,0,4) == "PASS" || $mssmQC == "hap2_resolved_P" || $mssmQC == "hap1_resolved_P" ) )) {{ \
         qcPass = qcPass+1; \
         if (( (( $tEnd-$tStart < 10000 && $nAlt > {params.minPbSupport}) || ($bnKey != "." && $bnOvp < {params.maxBNRatio} )))) {{ \
            altPass = altPass + 1;
         }}\
         }} \
        }} }} \
-    END {{ print qcPass"\t"altPass ; }}' > {output.reportMSSM}
+    END {{ print qcPass"\\t"altPass ; }}' > {output.reportMSSM}
 """
 
 rule MakeMSSMDistanceReport:
@@ -588,13 +621,14 @@ rm -f mssm.shuff;
 cut -f 1-3 {input.mssm} > mssm.shuff.bed
 nshuff=$(($nfu+4))
 while [ $i -lt 10000 ]; do
-   echo "iter "$i >> /dev/stderr
-   bedtools shuffle -i mssm.shuff.bed -g {params.ref}.fai | bedtools closest -t first -d -a stdin -b {input.uw} | cut -f $nshuff | awk '{{ if ($1 < 1000) print;}}' | wc -l >> mssm.shuff;
+   bedtools shuffle -i mssm.shuff.bed -g {params.ref}.fai | \
+   bedtools sort | \
+   bedtools closest -t first -d -a stdin -b {input.uw} | cut -f $nshuff | awk '{{ if ($1 < 1000) print;}}' | wc -l >> mssm.shuff;
    i=$(($i+1))
 done
    
 nclose=`bedtools closest -t first -d -a {input.mssm} -b {input.uw} | cut -f $nft | awk '{{ if ($1 < 1000) print;}}' | wc -l`
-echo -e $nelem"\t"$nclose > {output.distreport}
+echo -e $nelem"\\t"$nclose > {output.distreport}
 """
     
         
@@ -618,43 +652,240 @@ rule FilterCallsByPBAndBNSupportMSSM:
           (( $tEnd-$tStart < 10000 && $nAlt > {params.minPbSupport}) || ($bnKey != "." && $bnOvp < {params.maxBNRatio} )))) print;}} }}' > {output.filtMSSM}
 """
 
-rule AnnotateFilteredCalls:
-    input:
-        filtMSSM="{base}.uw.bed.filt",
-    output:
-        annotMSSM="{base}.uw.bed.filt.annotated",
-    params:
-        sge_opts=config["sge_small"] + " -pe serial 8 ",
-        sd=SNAKEMAKE_DIR
-    shell:"""
-mkdir -p mssm/{input.filtMSSM}
-cd mssm/{input.filtMSSM}
-make -f {params.sd}/AnnotateGapBed.mak GAPS=../../{input.filtMSSM}
-cp sv.partial_masked.trf.bed ../../{output.annotMSSM}
-"""
-        
 
-rule MergeMSSMHaplotypes:
+###########################################################
+###
+### Merging MSPAC haplotypes -- requires merging de novo
+### calls and haplotype-specific calls.
+### Subtract all haplotype-specific calls from denovos.
+### Then add de novos.
+###
+
+rule MergeMSSMHapAndDeNovo:
     input:
-        mssmh1 = expand("{mssm}.hap1.bed.uw.bed.filt.annotated",mssm=config["sample"]),
-        mssmh2 = expand("{mssm}.hap2.bed.uw.bed.filt.annotated",mssm=config["sample"]),
-        mssmdn = expand("{mssm}.remainingdenovos.bed.uw.bed.filt.annotated",mssm=config["sample"])
+        mssmh = expand("{mssm}.hap{hap}.bed.uw.bed.filt",mssm=config["sample"],hap=mssmHaps),
+        mssmdn = expand("{mssm}.remainingdenovos.bed.uw.bed.filt",mssm=config["sample"])
     output:
-        mssmMerged = "mssm.bed.filt"
+        comb = expand("{mssm}.hap{hap}.bed.uw.bed.filt.comb",mssm=config["sample"],hap=mssmHaps),
     params:
         sge_opts=config["sge_small"]
     shell:"""
-head -1 {input.mssmh1} > {input.mssmh1}.sup
-bedtools intersect -v -a {input.mssmdn} -b {input.mssmh1} > {input.mssmdn}.no_h1
-cat  {input.mssmh1} {input.mssmdn}.no_h1  | grep -v "^#" | sort -k1,1 -k2,2n -k3,3n >> {input.mssmh1}.sup
-bedtools intersect -v -a {input.mssmdn} -b {input.mssmh2} > {input.mssmdn}.no_h2
-head -1 {input.mssmh2} > {input.mssmh2}.sup
-cat   {input.mssmh2} {input.mssmdn}.no_h2 | grep -v "^#" | sort -k1,1 -k2,2n -k3,3n >> {input.mssmh2}.sup
-
-{SNAKEMAKE_DIR}/../sv/utils/MergeHaplotypes.sh {input.mssmh1}.sup {input.mssmh2}.sup {output.mssmMerged} "svType svLen svSeq qName qStart qEnd mssmQC source region nAlt nRef svAnn svRep bnKey bnSize bnOvp"
+head -1 {input.mssmh[0]} > {output.comb[0]}
+bedtools intersect -v -a {input.mssmdn} -b {input.mssmh[0]} > {input.mssmdn}.no_h1
+cat  {input.mssmh[0]} {input.mssmdn}.no_h1  | grep -v "^#" | sort -k1,1 -k2,2n -k3,3n >> {output.comb[0]}
+bedtools intersect -v -a {input.mssmdn} -b {input.mssmh[1]} > {input.mssmdn}.no_h2
+head -1 {input.mssmh[1]} > {output.comb[1]}
+cat   {input.mssmh[1]} {input.mssmdn}.no_h2 | grep -v "^#" | sort -k1,1 -k2,2n -k3,3n >> {output.comb[1]}
 """
+
+#
+# Mirror the structure used in SVQC. Eventually the same rules will be used
+#
+    
+rule SetupForFiltering:
+    input:
+        mssmh = expand("{mssm}.hap{{hap}}.bed.uw.bed.filt.comb",mssm=config["sample"])
+    output:
+        hapInDir=gapdir+"/hap{hap}/gaps.recalled"
+    params:
+        sge_opts=config["sge_small"]
+    shell:"""
+mkdir -p mssm/hap{wildcards.hap}
+bedtools sort -header -i {input.mssmh} > {output.hapInDir}
+"""
+        
+rule FindTRClusters:
+    input:
+        filt=gapdir+"/hap{hap}/gaps.recalled.filt",
+    output:
+        trClusters=gapdir+"/hap{hap}/tr_clusters.bed",
+    params:
+        clusterSize=config["tr_cluster_size"],
+        sge_opts="-cwd -pe serial 6 -l mfree=1G -l h_rt=12:00:00 -l disk_free=4G",
+        contigBed="contigs.h{hap}.fasta.sam.bed",
+        sd=SNAKEMAKE_DIR,
+        tr=SNAKEMAKE_DIR+"/../regions/tandem_repeats_strs_slop.bed",
+    shell:"""
+nf=`head -1 {input.filt} | awk '{{ print NF;}}'`
+fs=$((nf+1))
+fe=$((nf+4))
+cat {input.filt} | \
+  {params.sd}/../sv/utils/ToPoint.sh | \
+  bedtools intersect -header -loj -f 0.9 -a stdin -b {params.tr}  | \
+  awk '{{ if (NR==1) {{ print $0"\\ttrChrom\\ttrStart\\ttrEnd\\ttrScore";}} else {{ print; }} }}' | \
+  bioawk -c hdr '{{ if (NR > 1 && $trChrom != ".") {{ print $trChrom"\\t"$trStart"\\t"$trEnd;}} }}' |\
+  bedtools sort | \
+  sort | uniq -c | awk '{{ if ($1 >= {params.clusterSize}) print $2"\\t"$3"\\t"$4"\\t"$1;}}' | \
+  bedtools sort > {output.trClusters}
+"""
+
+rule MergeTRClusters:
+    input:
+        trClusters=expand(gapdir+"/hap{hap}/tr_clusters.bed",hap=mssmHaps)
+    output:
+        dipClusters=gapdir+"/dip_tr_clusters.bed"
+    params:
+        sge_opts="-cwd -pe serial 1 -l mfree=1G -l h_rt=1:00:00 ",
+    shell:"""
+cat {input.trClusters} | bedtools sort | bedtools merge > {output.dipClusters}
+"""
+
+#
+# Remove calls that overlap tandem repeat clusters defined by *either* the MSSM
+# tandem clusters, or the UW clusters. This way no calls will overlap the unresolved loci.
+#
+    
+rule SeparateTRClusterSVCalls:
+    input:
+        filt=gapdir+"/hap{hap}/gaps.recalled.filt",
+        trClusters=gapdir+"/dip_tr_clusters.bed",
+        uwTrClusters=config["uw_tandem_repeats"]                
+    output:
+        gapsClust=gapdir+"/hap{hap}/gaps.recalled.clust",
+        gapsNoClust=gapdir+"/hap{hap}/gaps.recalled.noclust",
+    params:
+        sge_opts="-pe serial 1 -l mfree=4G -l h_rt=01:00:00 -l disk_free=4G",
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+cat {input.filt} | {params.sd}/../sv/utils/ToPoint.sh | \
+ bedtools intersect -u -header -f 0.9 -a stdin -b {input.trClusters} | \
+ {params.sd}/../sv/utils/FromPoint.sh > {output.gapsClust}
+            
+cat {input.filt} | {params.sd}/../sv/utils/ToPoint.sh | \
+ bedtools intersect -v -header -f 0.9 -a stdin -b {input.trClusters} | \
+ bedtools intersect -v -header -f 0.9 -a stdin -b {input.uwTrClusters} | \
+ {params.sd}/../sv/utils/FromPoint.sh > {output.gapsNoClust}
+"""
+
+        
+
+#######################################
+# This section is lifted from SVQC.Snakefile, so any changes should be sync'e between here and there.
+#
+rule AnnotateSVInTR:
+    input:
+        filt ="mssm/hap{hap}/gaps.recalled.noclust"
+    output:
+        trNet="mssm/hap{hap}/tr_net.tab"
+    params:
+        sge_opts="-pe serial 1 -l mfree=4G -l h_rt=01:00:00 -l disk_free=4G",
+        tr=SNAKEMAKE_DIR+"/../regions/tandem_repeats_strs_slop.bed",
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+mkdir -p mssm/hap{wildcards.hap}
+nf=`head -1 {input.filt} | awk '{{ print NF;}}'`
+fs=$(($nf+1))
+fe=$(($nf+4))
+cat {input.filt} | {params.sd}/../sv/utils/ToPoint.sh | \
+  bedtools intersect -header -loj -f 0.9 -a stdin -b {params.tr}  | \
+  awk '{{ if (NR==1) {{ print $0"\\ttrChrom\\ttrStart\\ttrEnd\\ttrScore";}} else {{ print; }} }}' | \
+  {params.sd}/../sv/utils/ToNet.sh | \
+  bioawk -c hdr '{{ if ($trChrom != "." || NR == 1) print;}}' | \
+  bedtools groupby  -g $fs-$fe -c 5 -o sum > {output.trNet}
+"""
+
+rule FindTRZygosity:
+    input:
+        trNet=expand("mssm/hap{hap}/tr_net.tab",hap=mssmHaps),
+    output:
+        trZyg=expand("mssm/hap{hap}/tr_net.tab.zyg",hap=mssmHaps),
+        trZygBed=expand("mssm/hap{hap}/tr_net.tab.zyg.bed",hap=mssmHaps),
+    params:
+        sge_opts="-pe serial 1 -l mfree=4G -l h_rt=01:00:00 -l disk_free=4G",
+        tr=SNAKEMAKE_DIR+"/../regions/tandem_repeats_strs_slop.bed",
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+{params.sd}/../sv/utils/AnnotateTRRegionZygosity.py {input.trNet} {output.trZyg}
+paste {input.trNet[0]} {output.trZyg[0]} > {output.trZygBed[0]}
+paste {input.trNet[1]} {output.trZyg[1]} > {output.trZygBed[1]}
+"""
+
     
 
+rule FilterRecalledGaps:
+    input:
+        gaps="mssm/hap{hap}/gaps.recalled"
+    output:
+        filt="mssm/hap{hap}/gaps.recalled.filt"
+    params:
+        sge_opts="-pe serial 1 -l mfree=4G -l h_rt=01:00:00 -l disk_free=4G",
+        inversions=config["inversions"],
+    shell:"""
+nf=`head -1 {input.gaps} | awk '{{ print NF;}}'`
+bedtools intersect -header -f 0.9 -v -a {input.gaps} -b {params.inversions}  | \
+bedtools groupby -header -g 1-5 -c 1 -o first -full | cut -f 1-$nf > {output.filt}
+"""
+
+    
+rule AnnotateTRZygosity:
+    input:
+        trZygBed="mssm/hap{hap}/tr_net.tab.zyg.bed",
+        filt=expand("{mssm}.hap{{hap}}.bed.uw.bed.filt.comb",mssm=config["sample"]),
+    output:
+        filtTR="mssm/hap{hap}/gaps.recalled.noclust.tr_bed"
+    params:
+        sge_opts="-pe serial 1 -l mfree=4G -l h_rt=01:00:00 -l disk_free=4G",
+        tr=SNAKEMAKE_DIR+"/../regions/tandem_repeats_strs_slop.bed",
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+nf=`head -1 {input.filt} | awk '{{ print NF;}}'`
+fs=$(($nf+1))
+fe=$(($nf+4))
+cat {input.filt} | {params.sd}/..//sv/utils/ToPoint.sh | \
+ bedtools intersect -header -loj -a stdin -b {input.trZygBed} | \
+ awk '{{ if (NR==1) {{ print $0"\\ttrChrom\\ttrStart\\ttrEnd\\ttrScore\\ttrExpand\\ttrHap\\ttrHapDiff";}} else {{ print; }}}}' | \
+ bedtools groupby -header -g 1-5 -c $fs -o first -full | \
+ bioawk -c hdr '{{ print $trHap"\\t"$trChrom"_"$trStart"_"$trEnd"\\t"$trHapDiff;}}' > {output.filtTR}                
+"""
+    
+rule SplitGapsByTR:
+    input:
+        haps=gapdir+"/hap{hap}/gaps.recalled.noclust",
+        filtTR=gapdir+"/hap{hap}/gaps.recalled.noclust.tr_bed",        
+    output:
+        notr=gapdir+"/hap{hap}/gaps.recalled.noclust.notr",
+        homtr=gapdir+"/hap{hap}/gaps.recalled.noclust.homtr",
+        hettr=gapdir+"/hap{hap}/gaps.recalled.noclust.hettr",        
+    params:
+        sge_opts="-cwd -pe serial 8 -l mfree=2G -l h_rt=04:00:00 -l disk_free=4G",
+        sd=SNAKEMAKE_DIR
+    shell:"""
+paste {input.haps} {input.filtTR} | bioawk -c hdr '{{ if (NR == 1 || $trHap == ".") print;}}' > {output.notr}
+paste {input.haps} {input.filtTR} | bioawk -c hdr '{{ if (NR == 1 || $trHap == "HOM") print;}}' > {output.homtr}
+paste {input.haps} {input.filtTR} | bioawk -c hdr '{{ if (NR == 1 || $trHap == "HET") print;}}' > {output.hettr}
+"""
+    
+rule MergeGaps:
+    input:
+        notr=expand(gapdir+"/hap{hap}/gaps.recalled.noclust.notr",hap=mssmHaps),
+        homtr=expand(gapdir+"/hap{hap}/gaps.recalled.noclust.homtr",hap=mssmHaps),
+        hettr=expand(gapdir+"/hap{hap}/gaps.recalled.noclust.hettr",hap=mssmHaps),
+    output:
+        comb="mssm.bed.filt"
+    params:
+        sge_opts="-cwd -pe serial 8 -l mfree=2G -l h_rt=04:00:00 -l disk_free=4G",
+        sd=SNAKEMAKE_DIR
+    shell:"""
+# First combine the calls outside of tandem repeat regions. This is with low threshold for merging.
+{params.sd}/../sv/utils/MergeHaplotypesByOperation.sh {input.notr} {output.comb}.not_tr "svType svLen svSeq qName qStart qEnd region nAlt nRef bnKey bnSize bnOvp" 0.1
+
+#
+# Next combine inside tandem repeat regions that are expected
+# to be homozygous. Just one haplotype should be selected here. 
+#
+cat {input.homtr[0]} | awk '{{ if (NR==1) {{ print $0"\\thap";}} else {{ print $0"\\tHOM";}} }}' | \
+ {params.sd}/../sv/utils/Select.py --cols \#chrom tStart tEnd hap svType svLen svSeq qName qStart qEnd region nAlt nRef bnKey bnSize bnOvp --out {output.comb}.homtr-0
+
+#
+# Finally merge the heterozygous regions, with a moderate threshold on difference.
+#
+{params.sd}/../sv/utils/MergeHaplotypesByOperation.sh {input.hettr} {output.comb}.hettr "svType svLen svSeq qName qStart qEnd region nAlt nRef bnKey bnSize bnOvp" 0.5
+
+# Now combine all calls
+head -1 {output.comb}.not_tr > {output.comb}.no_source
+cat {output.comb}.not_tr {output.comb}.homtr-0 {output.comb}.hettr | grep -v "^#" | bedtools sort >> {output.comb}.no_source
+cat {output.comb}.no_source | awk '{{ if (NR ==1) {{ print $0"\\tsource"; }} else {{ print $0"\\tMSSM";}} }}' > {output.comb}
+"""
 
 rule FilterUWCalls:
     input:
@@ -667,7 +898,7 @@ rule FilterUWCalls:
         pbSupport=config["pbSupport"]
     shell:"""
 {SNAKEMAKE_DIR}/../sv/utils/HeaderMod.py --source {input.uwsv} {input.uwbn} > {output.uwfilt}
-paste {input.uwsv} {input.uwbn} | sed "s/\\t#/\\t/g" | bioawk -c hdr '{{ if ($nAlt > {params.pbSupport} || $bnKey != ".") print;}}' | grep -v "^#" | sort -k1,1 -k2,2n -k3,3n | bedtools groupby -c 4 -o first -full | awk  'BEGIN{{OFS="\t";}} NF{{NF-=1}};1;' >> {output.uwfilt}
+paste {input.uwsv} {input.uwbn} | sed "s/\\t#/\\t/g" | bioawk -c hdr '{{ if ($nAlt > {params.pbSupport} || $bnKey != ".") print;}}' | grep -v "^#" | sort -k1,1 -k2,2n -k3,3n | bedtools groupby -c 4 -o first -full | awk  'BEGIN{{OFS="\\t";}} NF{{NF-=1}};1;' | bedtools sort >>  {output.uwfilt}
 """
             
 rule MakeBB:
@@ -727,8 +958,9 @@ rule CountSpliceClusters:
         sge_opts=config["sge_small"],
         ref=config["ref"],
         bams=config["reads"],
+        sd=SNAKEMAKE_DIR
     shell:
-        "{SNAKEMAKE_DIR}/../sv/utils/SpliceVariantsAndCoverageValidate.py --gaps {input.sv} --ref {params.ref} --reads {params.bams} --window 250 --flank 1000 --count {output.svClusters} --tmpdir $TMPDIR"
+        "{params.sd}/../sv/utils/SpliceVariantsAndCoverageValidate.py --gaps {input.sv} --ref {params.ref} --reads {params.bams} --window 250 --flank 1000 --count {output.svClusters} --tmpdir $TMPDIR  --blasr {params.sd}/../blasr/alignment/bin/blasr "
 
 
 rule SummarizePacBioCovValidation:
@@ -1005,10 +1237,10 @@ rule AddUWSource:
                      config["svqc"] + "/hap1/gaps.recalled.sorted"],
         fillin    =[ config["fillin"] + "/hap0/gaps.bed",
                      config["fillin"] + "/hap1/gaps.bed"],
-        stitchingFai = [config["stitchingFai"] + "contigs.h0.fasta.fai", \
-                        config["stitchingFai"] + "contigs.h1.fasta.fai" ],
-        fillInFai =[ config["fillInFai"] + "alignments.h0.bam.fasta.fai", \
-                     config["fillInFai"] + "alignments.h1.bam.fasta.fai" ]
+        stitchingFai = [config["stitchingFai"] + "/contigs.h0.fasta.fai", \
+                        config["stitchingFai"] + "/contigs.h1.fasta.fai" ],
+        fillInFai =[ config["fillInFai"] + "/alignments.h0.bam.fasta.fai", \
+                     config["fillInFai"] + "/alignments.h1.bam.fasta.fai" ]
     shell:"""
 {SNAKEMAKE_DIR}/../sv/utils/AddOriginalHaplotype.py --sv {input.svCalls} --stitching {params.stitching} --fillin {params.fillin} --out {output.svSource} --stitchingFai {params.stitchingFai} --fillInFai {params.fillInFai} 
 """
@@ -1055,6 +1287,7 @@ echo "is_trf" > {output.trf}
 cat {input.svBase} | {params.sd}/../sv/utils/LeftJustify.py | bedtools intersect -a stdin -b {params.trf} -loj | \
 bedtools groupby -g 1-5 -c 5 -o first -full | cut -f $nf2 | awk '{{ if ($1 != ".") {{ print "TR"; }} else {{ print ".";}}  }}' >> {output.trf}
 """
+
 rule MakeAnnotatedBed:
     input:
         baseBed="sv_calls.base.bed",
@@ -1179,17 +1412,18 @@ rule GenotypeParents:
         sge_opts="-pe serial 4 -l mfree=1G -l h_rt=08:00:00",
         ref=config["ref"],
         faBam=config["faBams"],
-        moBam=config["moBams"]
+        moBam=config["moBams"],
+        sd=SNAKEMAKE_DIR
     shell:"""
 module unload anaconda; module load python/2.7.3;
 
-{SNAKEMAKE_DIR}/../sv/utils/SpliceVariantsAndCoverageValidate.py --gaps {input.svs} --reads {input.bams} --out {output.parent} --nproc 12 --ref {params.ref} --separate-haplotypes
+{SNAKEMAKE_DIR}/../sv/utils/SpliceVariantsAndCoverageValidate.py --gaps {input.svs} --reads {input.bams} --out {output.parent} --nproc 12 --ref {params.ref} --separate-haplotypes  --blasr {params.sd}/../blasr/alignment/bin/blasr 
 perl -pi -e "s/#region/region_{wildcards.pa}/g" {output.parent}
 perl -pi -e "s/nAlt/nAlt_{wildcards.pa}/g" {output.parent}
 perl -pi -e "s/nRef/nRef_{wildcards.pa}/g" {output.parent}
     
 """
-
+#{params.sd}/../blasr/alignment/bin/blasr 
 rule MakeInheritanceTable:
     input:
         parents=expand("parent.cov.{pa}.bed",pa=parents),

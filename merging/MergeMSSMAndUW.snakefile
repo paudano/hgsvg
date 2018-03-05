@@ -136,7 +136,7 @@ rule AddSVQCLoci:
         ref=config["ref"],
         sd=SNAKEMAKE_DIR,
     shell:"""
-{params.sd}/MergeFiles.py --files {input.svcalls} {input.loci} --out {output.comb}
+{params.sd}/MergeFiles.sh --files {input.svcalls} {input.loci} --out {output.comb}
 """    
         
 rule MakeSVTRRegions:
@@ -1203,15 +1203,21 @@ rule CombineMergedToPreInv:
     params:
         sge_opts=config["sge_small"],
         ref=config["ref"],
-        sample=config["sample"]
+        sample=config["sample"],
+        sd=SNAKEMAKE_DIR,
     shell:"""
 module load numpy/1.11.0    
 module load pandas
 head -1 merged.ins.bed > {output.mergedBed}.tmp
 cat {input.merged} | grep -v "^#" | awk '{{ if ($3-$2 >= 50) print; }}' | bedtools sort >> {output.mergedBed}.tmp
 nf=`head -1 {output.mergedBed}.tmp | awk '{{ print NF;}}'`
-bedtools groupby -header -g 1-6 -i {output.mergedBed}.tmp -c 1 -o first -full | cut -f 1-$nf > {output.mergedBed}
+bedtools groupby -header -g 1-6 -i {output.mergedBed}.tmp -c 1 -o first -full | cut -f 1-$nf > {output.mergedBed}.pre-conflict
+
+{params.sd}/../sv/utils/RemoveDelConflicts.sh  {output.mergedBed}.pre-conflict  {output.mergedBed}
+
 rm -f {output.mergedBed}.tmp
+rm -f {output.mergedBed}.pre-conflict
+
 """
 
 rule ExcludeEventsOverlappingInversions:

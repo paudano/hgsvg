@@ -302,11 +302,11 @@ rule SeparateTRClusterSVCalls:
     shell:"""
 cat {input.filt} | {params.sd}/../sv/utils/ToPoint.sh | \
  bedtools intersect -u -header -f 0.9 -a stdin -b {input.trClusters} | \
- {params.sd}/../sv/utils/FromPoint.sh > {output.gapsClust}
+ {params.sd}/../sv/utils/FromPoint.sh | tr " " "\t" > {output.gapsClust}
             
 cat {input.filt} | {params.sd}/../sv/utils/ToPoint.sh | \
  bedtools intersect -v -header -f 0.9 -a stdin -b {input.trClusters} | \
- {params.sd}/../sv/utils/FromPoint.sh > {output.gapsNoClust}
+ {params.sd}/../sv/utils/FromPoint.sh | tr " " "\t" > {output.gapsNoClust}
 """        
     
 rule AnnotateSVInTR:
@@ -417,10 +417,15 @@ cat {input.homtr[0]} | awk '{{ if (NR==1) {{ print $0"\\thap";}} else {{ print $
 {params.sd}/../sv/utils/MergeHaplotypesByOperation.sh {input.hettr} {output.comb}.hettr "svType svLen svSeq qName qStart qEnd region nAlt nRef" 0.5
 
 # Now combine all calls
-head -1 {output.comb}.not_tr > {output.comb}
-cat {output.comb}.not_tr {output.comb}.homtr-0 {output.comb}.hettr | grep -v "^#" | bedtools sort >> {output.comb}
+head -1 {output.comb}.not_tr > {output.comb}.pre-filter
+cat {output.comb}.not_tr {output.comb}.homtr-0 {output.comb}.hettr | grep -v "^#" | bedtools sort >> {output.comb}.pre-filter
+
+{params.sd}/../sv/utils/RemoveDelConflicts.sh {output.comb}.pre-filter {output.comb}
+
+#rm -f {output.comb}.pre-filter
         
 """
+
 
 rule MakeBB:
     input:
@@ -822,7 +827,11 @@ rule FilteredDiploid:
         sge_opts="-cwd -pe serial 1 -l mfree=2G -l h_rt=04:00:00 -l disk_free=4G",
         sd=SNAKEMAKE_DIR
     shell:"""
-{params.sd}/../sv/utils/MergeHaplotypesByOperation.sh {input.fillInFilt} {output.fillInDiploid} "svType svLen svSeq qName qStart qEnd region nAlt nRef"
+{params.sd}/../sv/utils/MergeHaplotypesByOperation.sh {input.fillInFilt} {output.fillInDiploid}.pre "svType svLen svSeq qName qStart qEnd region nAlt nRef"
+
+{params.sd}/../sv/utils/RemoveDelConflicts.sh {output.fillInDiploid}.pre {output.fillInDiploid}
+rm -f {output.fillInDiploid}.pre
+
 """
     
 

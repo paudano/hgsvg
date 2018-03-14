@@ -13,7 +13,7 @@ for line in inFile:
     outLine[5] = "+"
     outLine[6] = vals[1]
     outLine[7] = vals[2]
-    if vals[3] == "insertion":
+    if vals[3] == "deletion":
         outLine[8] = "255,0,0"
     else:
         outLine[8] = "0,0,255"

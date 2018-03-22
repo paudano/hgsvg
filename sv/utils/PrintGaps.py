@@ -48,6 +48,12 @@ args = ap.parse_args()
 genome = file(args.genome, 'r')
 handle = open(args.genome, "r")
 
+def GetQueryLength(lens, ops):
+    ql = 0
+    for i in range(0,len(lens)):
+        if ops[i] == I or ops[i] == M or ops[i] == X:
+            ql+=lens[i]
+    return ql
 
 
 if (args.outFile is None):
@@ -107,6 +113,12 @@ P = 'P'
 def IsMatch(c):
     return (c == M or c == X or c == E)
 
+def IsIndel(c):
+    return (c == I or c == D)
+
+def IsClip(c):
+    return (c == S or c == H or c == P)
+
 if (args.sam.find(".fofn") >= 0):
     fofnFile = open(args.sam)
     samFiles = [line.strip() for line in fofnFile.readlines()]
@@ -135,6 +147,27 @@ outFile.write("\n")
 
 if (args.nearest is not None):
     nearest = open (args.nearest, 'w')
+
+
+def RemoveMismatches(aln):
+    modLen=[]
+    modOp =[]
+    i=0
+    while(i < len(aln.ops)):
+        if IsMatch(aln.ops[i]):
+            netMatch=0
+            p=i
+            while i < len(aln.ops) and IsMatch(aln.ops[i]):
+                netMatch+= aln.lengths[i]
+                i+=1
+            modLen.append(netMatch)
+            modOp.append(M)
+        else:            
+            modLen.append(aln.lengths[i])
+            modOp.append(aln.ops[i])
+            i+=1
+    aln.lengths=modLen
+    aln.ops=modOp
 
 for samFileName in args.sam:
     samFile = open(samFileName)
@@ -228,9 +261,10 @@ for samFileName in args.sam:
         niter = 0
         maxGap = 0
         maxGapType = 0
-        #print str(aln.ops)
+
 
         foundGap = False
+        
         if (args.removeAdjacentIndels):
             for i in range(1,len(aln.lengths)-1):
                 if (aln.ops[i-1] != 'M' and
@@ -254,45 +288,55 @@ for samFileName in args.sam:
         packedOps = []
         packedLengths = []
         i = 0
+        nPacked =0
         if (args.condense > 0):
+            RemoveMismatches(aln)
+
             while (i < len(aln.lengths)):
-                l = aln.lengths[i]
-                op = aln.ops[i]
-                j = i
-                if (op == I or op == D):
-                    if (l > maxGap):
-                        maxGap = l
-                        maxGapType = op
-                    
-                if (op == I or op == D and i < len(aln.ops) - 2 and aln.ops[i+2][0] == op):
-                    matchLen = 0
-                    gapLen   = 0
-                    while (j+2 < len(aln.ops) and aln.ops[j+2][0] == op and IsMatch(aln.ops[j+1][0])  and aln.lengths[j+1] < args.condense):
-    
-                        matchLen += aln.lengths[j+1]
-                        gapLen   += aln.lengths[j+2]
-                        j+=2
-                    if (j > i):
-                        newIndel = (op, l+gapLen)
-                        newMatch = (M, matchLen)
-                        packedOps.append(op)
-                        packedLengths.append(l+gapLen)
-                        
-                        packedOps.append(M)
-                        packedLengths.append(matchLen)
-    
+                if IsClip(aln.ops[i]):
+                    packedOps.append(aln.ops[i])
+                    packedLengths.append(aln.lengths[i])
+                    i+=1
+                    continue
+                netIndel = 0
+                netIns   = 0
+                netDel   = 0
+                netMatch = 0
+                pi = i
+                while (i < len(aln.lengths) - 2 and 
+                       IsIndel(aln.ops[i]) and 
+                       IsMatch(aln.ops[i+1]) and 
+                       aln.lengths[i+1] < args.condense and 
+                       netMatch < args.condense ):
+                    if aln.ops[i] == D:
+                        netIndel -= aln.lengths[i]
+                        netDel += aln.lengths[i]
                     else:
-                        packedLengths.append(l)
-                        packedOps.append(op)
-    
+                        netIndel += aln.lengths[i]
+                        netIns += aln.lengths[i]
+                    netMatch+= aln.lengths[i+1]
+                    i+=2
+                if i > pi:
+                    if netIndel < 0:
+                        packedOps.append(D)
+                        packedLengths.append(-netIndel)
+                        netMatch+= netIns
+                    if netIndel >= 0:
+                        netIns-=netDel
+                        packedOps.append(I)
+                        packedLengths.append(netIndel)
+                        netMatch+=netDel
+                    if netMatch > 0:
+                        packedOps.append(M)
+                        packedLengths.append(netMatch)
+                    
                 else:
-                    packedLengths.append(l)
-                    packedOps.append(op)
-            
-                i = j + 1
-                niter +=1
-                if (niter > len(aln.ops)):
-                    print "ERROR! too many interations."
+                    packedOps.append(aln.ops[i])
+                    packedLengths.append(aln.lengths[i])
+                    i+=1
+                
+            import pdb
+#            pdb.set_trace()
         else:
             packedOps = aln.ops
             packedLengths = aln.lengths
@@ -302,6 +346,8 @@ for samFileName in args.sam:
         #
         nM,nMis,nIns,nDel = 0,0,0,0
         total = 0
+        pql=GetQueryLength(packedLengths, packedOps)
+        ql=GetQueryLength(aln.lengths, aln.ops)
         for i in range(len(packedOps)):
             op = packedOps[i]
             oplen  = packedLengths[i]
@@ -549,7 +595,7 @@ for samFileName in args.sam:
         if (args.outsam is not None):
             packedCigar= ''.join([str(v[0]) + str(v[1]) for v in zip(packedLengths, packedOps)])
             vals = line.split()
-            packedLine = '\t'.join(vals[0:5]) + "\t" + packedCigar + '\t'.join(vals[6:]) + "\n"
+            packedLine = '\t'.join(vals[0:5]) + "\t" + packedCigar + "\t" + '\t'.join(vals[6:]) + "\n"
             outsam.write(packedLine)
             
 if (args.gapFree is not None):

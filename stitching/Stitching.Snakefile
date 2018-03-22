@@ -1,3 +1,4 @@
+import os
 import tempfile
 
 #
@@ -14,6 +15,10 @@ else:
     TMPDIR = tempfile.gettempdir()
 
 configfile: "config.json"
+
+def GetFastq(fofn):
+    f=open(fofn)
+    return " ".join([line.strip() for line in f])
 
 
 SLOP_FOR_SV_SEQUENCE_POSITIONS = 5000
@@ -38,21 +43,166 @@ rule all:
         asmGraphs   = expand("overlaps/overlap.{hap}.{chrom}.txt.gml", hap=haps, chrom=chroms),
         asmPaths    = expand("overlaps/overlap.{hap}.{chrom}.txt.path", hap=haps, chrom=chroms),
         asmContigs  = expand("contigs/patched.{hap}.{chrom}.fasta", hap=haps, chrom=chroms),
-        asmSam      = expand("alignments.{hap}.sam",hap=haps),
-        asmBam      = expand("alignments.{hap}.bam",hap=haps),
 	chrFasta    = expand("contigs.{hap}.fasta", hap=haps),
 	chrFastaFai = expand("contigs.{hap}.fasta.fai", hap=haps),
-	chrAln      = expand("contigs.{hap}.fasta.sam", hap=haps),
-        chrBed      = expand("contigs.{hap}.fasta.sam.bed", hap=haps),
-	chrBed6     = expand("contigs.{hap}.fasta.sam.bed6", hap=haps),
-	chrBB       = expand("contigs.{hap}.fasta.sam.bb", hap=haps),
-        indels      = expand("stitching_hap_gaps/hap{hap}/indels.orig.bed", hap=shortHaps),
-        indelVCF    = expand("stitching_hap_gaps/hap{hap}/indels.orig.vcf",hap=shortHaps),
-        normVCF     = expand("stitching_hap_gaps/hap{hap}/indels.norm.vcf",hap=shortHaps),
-        normBed     = expand("stitching_hap_gaps/hap{hap}/indels.norm.bed",hap=shortHaps),                
-        annotation  = "stitching_hap_gaps/diploid/insertions.bed",
-        indelBed    = "stitching_hap_gaps/diploid/indels.bed"
-        
+        chrMemIndex = expand("index/contigs.{hap}.fasta.bwt", hap=haps),
+        chrReadAln  = expand("index/contigs.{hap}.fasta.bam", hap=haps),
+        contigHtsVCF= expand("index/contigs.{hap}.fasta.vcf", hap=haps),
+#	chrAln      = expand("contigs.{hap}.fasta.sam", hap=haps),
+#        chrBed      = expand("contigs.{hap}.fasta.sam.bed", hap=haps),
+#	chrBed6     = expand("contigs.{hap}.fasta.sam.bed6", hap=haps),
+#	chrBB       = expand("contigs.{hap}.fasta.sam.bb", hap=haps),
+#        indels      = expand("stitching_hap_gaps/hap{hap}/indels.orig.bed", hap=shortHaps),
+#        indelVCF    = expand("stitching_hap_gaps/hap{hap}/indels.orig.vcf",hap=shortHaps),
+#        normVCF     = expand("stitching_hap_gaps/hap{hap}/indels.norm.vcf",hap=shortHaps),
+#        normBed     = expand("stitching_hap_gaps/hap{hap}/indels.norm.bed",hap=shortHaps),                
+#        annotation  = "stitching_hap_gaps/diploid/insertions.bed",
+#        indelBed    ="stitching_hap_gaps/diploid/indels.bed"
+
+rule ApplyPolish:
+    input:
+        assembly="{sample}.{hap}.fasta",
+        vcf="wgsvcf_{hap}.vcf"
+    output:
+        polish="{sample}.{hap}.polish.fasta",
+    params:
+        sge_opts="-pe serial 1 -l h_rt=1:00:00 -l mfree=8G",
+        sd=SNAKEMAKE_DIR
+    shell:"""
+{params.sd}/ApplyVCFPatch.py --genome {input.assembly} --vcf {input.vcf} --out {output.polish}
+"""
+
+
+rule MakeDummyChroms:
+    input:
+        fasta="contigs.h0.fasta",
+    output:
+        dummy=dynamic("dummy/contig.h0.{contig}.txt"),
+    params:
+        sge_opts=config["grid_small"]
+    shell:"""
+samtools faidx {input.fasta}
+mkdir -p dummy;
+for ctg in `cut -f 1 {input.fasta}.fai`; do 
+  touch dummy/contig.h0.$ctg.txt
+done || true
+"""
+
+rule MakeDummyChromsH1:
+    input:
+        fasta="contigs.h1.fasta",
+    output:
+        dummy=dynamic("dummy/contig.h1.{contig}.txt"),
+    params:
+        sge_opts=config["grid_small"]
+    shell:"""
+samtools faidx {input.fasta}
+mkdir -p dummy;
+for ctg in `cut -f 1 {input.fasta}.fai`; do 
+  touch dummy/contig.h1.$ctg.txt
+done || true
+"""
+
+rule CallVariantsOnChromH0:
+    input:
+        fasta="contigs.h0.fasta",
+        bam="index/contigs.h0.fasta.bam",
+        dummy_contig="dummy/contig.h0.{contig}.txt"
+    output:
+        vcf="vcfs/contigs.h0.{contig}.vcf",
+    params:
+        sge_opts=config["grid_small"], 
+    shell:"""
+mkdir -p vcfs
+freebayes -f {input.fasta}  -b {input.bam} --region {wildcards.contig} -m 10 --min-coverage 10 --max-coverage 40 -v {output.vcf} 
+"""
+
+rule CallVariantsOnChromH1:
+    input:
+        fasta="contigs.h1.fasta",
+        bam="index/contigs.h1.fasta.bam",
+        dummy_contig="dummy/contig.h1.{contig}.txt"
+    output:
+        vcf="vcfs/contigs.h1.{contig}.vcf",
+    params:
+        sge_opts=config["grid_small"], 
+    shell:"""
+mkdir -p vcfs
+freebayes -f {input.fasta} -b {input.bam} --region {wildcards.contig} -m 10 --min-coverage 10 --max-coverage 40 -v {output.vcf} 
+"""
+
+#rule CombineVariants:
+#    input:
+#       invcf=dynamic("vcfs/contigs.h1.{contig}.vcf"),
+#    output:
+#       vcf="index/contigs.{hap}.fasta.vcf",
+#    params:
+#       sge_opts=config["grid_small"]
+#    shell:"""
+#grep "^#" {input.invcf[0]} > {output.vcf}
+#cat {input.invcf} | grep -v "^#" | sort -k1,1 -k2,2n >> {output.vcf}
+#"""
+#
+
+rule CombineVariantsH0:
+    input:
+       invcf=dynamic("vcfs/contigs.h0.{contig}.vcf"),
+    output:
+       vcf="index/contigs.h0.fasta.vcf",
+    params:
+       sge_opts=config["grid_small"]
+    shell:"""
+grep "^#" {input.invcf[0]} > {output.vcf}
+cat {input.invcf} | grep -v "^#" | sort -k1,1 -k2,2n >> {output.vcf}
+"""
+
+
+rule CombineVariantsH1:
+    input:
+       invcf=dynamic("vcfs/contigs.h1.{contig}.vcf"),
+    output:
+       vcf="index/contigs.h1.fasta.vcf",
+    params:
+       sge_opts=config["grid_small"]
+    shell:"""
+grep "^#" {input.invcf[0]} > {output.vcf}
+cat {input.invcf} | grep -v "^#" | sort -k1,1 -k2,2n >> {output.vcf}
+"""
+
+rule MapHTSReadsToContigs:
+    input:
+       asm="contigs.h{hap}.fasta",
+       bwt="index/contigs.h{hap}.fasta.bwt",
+       fq1=config["fastq_1_fofn"],
+       fq2=config["fastq_2_fofn"],
+    output:
+       bam=protected("index/contigs.h{hap}.fasta.bam"),
+    params:
+       sge_opts=config["grid_bwa"],
+       fq1=GetFastq(config["fastq_1_fofn"]),
+       fq2=GetFastq(config["fastq_2_fofn"])
+    shell:"""
+bwa mem -t 10 index/{input.asm}  '<zcat {params.fq1}' '<zcat {params.fq2}' | \
+  samtools view -bS - | \
+  samtools sort -m2G -@ 4 -T $TMPDIR/aln -o {output.bam}
+"""
+
+     
+
+
+rule MakeMemIndex:
+    input:
+       asm="contigs.h{hap}.fasta"
+    output:
+       bwt="index/contigs.h{hap}.fasta.bwt"
+    params:
+       sge_opts=config["grid_large"]
+    shell:"""
+mkdir -p index
+cd index && ln -s ../{input.asm} . && cd ..
+bwa index index/{input.asm}
+"""
+
 rule MakeIndels:
     input:
        asmSam="contigs.h{hap}.fasta.sam",
@@ -171,7 +321,7 @@ rule MakeContigAsmAln:
         sd=SD,
         td=TMPDIR        
     shell:"""
-{params.sd}/MapContigs.py --contigs {input.asmFasta} --ref {params.ref} --tmpdir $TMPDIR --blasr {params.sd}/../blasr/alignment/bin/blasr --out {output.asmSam} --nproc 4
+{params.sd}/MapContigs.py --contigs {input.asmFasta} --ref {params.ref} --tmpdir $TMPDIR --blasr blasr --out {output.asmSam} --nproc 4
 """
 
 rule MakeChrAsmBed:
@@ -312,35 +462,9 @@ rule MakeContigBed:
         """for c in {} ; do  
         egrep \"^$c\t\" {{input.asmBed}} > overlaps/overlaps.{{wildcards.hap}}.$c.bed;
         h=`echo {{wildcards.hap}}| tr -d "h"`;
-        grep -P "/0\\t"  overlaps/overlaps.{{wildcards.hap}}.$c.bed > overlaps/overlaps.{{wildcards.hap}}.$c.ctg0.bed;
+        grep -P "/$h\\t"  overlaps/overlaps.{{wildcards.hap}}.$c.bed > overlaps/overlaps.{{wildcards.hap}}.$c.ctg0.bed;
         done
         true """.format(" ".join(chroms))
-
-
-
-rule MakeAlnBam:
-    input:
-        asmFofn="alignments.fofn"
-    output:
-        alnSam=expand("alignments.{hap}.sam",hap=haps)
-    params:
-        sge_opts=config["grid_small"],
-        sd=SD
-    shell:"""
-{params.sd}/../sv/CombineAssemblies.py --alignments {input.asmFofn} --header {params.sd}/header.sam
-"""
-
-rule MakeBam:
-    input:
-        asmSam="alignments.{hap}.sam"
-    output:
-        asmBam="alignments.{hap}.bam"
-    params:
-        sge_opts=config["grid_small"]
-    shell:"""
-samtools view -bS {input.asmSam} | samtools sort -T $TMPDIR/hap.{wildcards.hap} -o {output.asmBam}
-samtools index {output.asmBam}
-"""
     
 rule MakeAsmBed:
     input:

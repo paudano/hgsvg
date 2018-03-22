@@ -5,7 +5,15 @@ ops=["insertion", "deletion"]
 dirs=["SVQC", "fill-in"]
 shell.prefix(". {SNAKEMAKE_DIR}/config.sh; ")
 gapdir=config["gapdir"]
-#include: "QCGaps.snakefile"
+if "contigs" in config:
+    contigs=config["contigs"]
+else:
+    contigs = { "0" : "contigs.h0.fasta", "1" : "contigs.h1.fasta" }
+
+if "do_recall" not in config:
+    config["do_recall"] = "no"
+
+    
 rule all:
     input:
         stitching=expand("stitching_hap_gaps/hap{hap}/gaps.bed", hap=haps),
@@ -37,9 +45,9 @@ rule all:
         reCalled=expand("{gapdir}/hap{hap}/gaps.recalled",gapdir=gapdir,hap=haps),
         reCalledSorted=expand("{gapdir}/hap{hap}/gaps.recalled.sorted",gapdir=gapdir,hap=haps),
         reCalledFiltered=expand("{gapdir}/hap{hap}/gaps.recalled.filt",gapdir=gapdir,hap=haps),
+        reCalledFilteredClusters=expand("{gapdir}/hap{hap}/gaps.recalled.filt.clusters",gapdir=gapdir,hap=haps),
         indelBed=expand("{gapdir}/hap{hap}/indels.recalled.bed",gapdir=gapdir,hap=haps),
         svCalls=expand("{gapdir}/diploid/sv_calls.bed",gapdir=gapdir),
-        combinedTable=expand("{gapdir}/hap{hap}/gaps.bed.support",gapdir=gapdir, hap=haps),
         retainedIndels=expand("{gapdir}/hap{hap}/indels.retained.bed",gapdir=gapdir, hap=haps),
         recalledRgions=expand("{gapdir}/hap{hap}/regions.recalled.ref",gapdir=gapdir, hap=haps),
         recalledSortedRegions=expand("{gapdir}/hap{hap}/regions.recalled.ref.sorted",gapdir=gapdir, hap=haps),
@@ -55,7 +63,33 @@ rule all:
         trClusterFasta=expand("{gapdir}/hap{hap}/tr_clusters.bed.fasta",gapdir=gapdir,hap=haps),
         gapsClust=expand("{gapdir}/hap{hap}/gaps.recalled.clust",gapdir=gapdir,hap=haps),
         gapsNoClust=expand("{gapdir}/hap{hap}/gaps.recalled.noclust",gapdir=gapdir,hap=haps),
-        trClusterCalls=gapdir+"/tr_clusters.calls.bed"
+        trClusterCalls=gapdir+"/tr_clusters.calls.bed",
+        indels=expand("SVQC/hap{hap}/indels_local.bed",hap=haps),
+        indels_op=expand("SVQC/hap{hap}/indels_local.{op}.bed",hap=haps, op=ops)
+rule CreateClusterCalls:
+    input:
+        reCalledFiltered=gapdir+"/hap{hap}/gaps.recalled.filt",
+        contigBed=lambda wildcards: contigs[wildcards.hap]+".sam.bed"
+
+    output:
+        reCalledFilteredClusters=gapdir+"/hap{hap}/gaps.recalled.filt.clusters"
+    params:
+        sge_opts="-cwd -pe serial 1 -l mfree=1G -l h_rt=04:00:00 -l disk_free=1G",
+        sd=SNAKEMAKE_DIR,
+        ref=config["ref"],
+        clusterSize=config["tr_cluster_size"]
+    shell:"""
+cat {input.reCalledFiltered} | {params.sd}/../sv/utils/ToPoint.sh | \
+   bedtools slop -g {params.ref}.fai -b 1000 -i stdin |
+   bedtools sort | \
+   bedtools merge > {output.reCalledFilteredClusters}.regions
+
+bedtools intersect -a {output.reCalledFilteredClusters}.regions -b {input.reCalledFiltered} -wa | \
+  bedtools groupby -g 1-3 -c 2 -o count | \
+  awk '{{ if ($NF >= {params.clusterSize}) print;}}' > {output.reCalledFilteredClusters}
+
+rm -f {output.reCalledFilteredClusters}.regions  
+"""
 
 rule CreateTRClusterCalls:
     input:
@@ -73,7 +107,7 @@ rule CreateTRClusterCalls:
     
 rule MergeAllTRClusters:
     input:
-        clusters=expand(gapdir+"/hap{hap}/tr_clusters.bed.all", hap=haps)
+        clusters=expand(gapdir+"/hap{hap}/tr_clusters.bed.all", hap=haps),
     output:
         dip=gapdir+"/dip_tr_clusters.bed.all",
     params:
@@ -84,28 +118,30 @@ cat {input.clusters} | bedtools sort | bedtools merge > {output.dip}
     
 rule MergeTRClusters:
     input:
-        clusters=expand(gapdir+"/hap{hap}/tr_clusters.bed", hap=haps)
+        clusters=expand(gapdir+"/hap{hap}/tr_clusters.bed", hap=haps),
+        allClusters=expand(gapdir+"/hap{hap}/gaps.recalled.filt.clusters",hap=haps)        
     output:
         dip=gapdir+"/dip_tr_clusters.bed",
     params:
         sge_opts="-cwd -pe serial 1 -l mfree=1G -l h_rt=04:00:00 -l disk_free=1G",    
     shell:"""
-cat {input.clusters} | bedtools sort | bedtools merge > {output.dip}
+cat {input.clusters} {input.allClusters} | bedtools sort | bedtools merge > {output.dip}
 """
     
 rule SplitGaps:
     input:
         gaps=gapdir+"/hap{hap}/gaps.sorted",
-        asm="contigs.h{hap}.fasta"
+        asm=lambda wildcards: contigs[wildcards.hap]
     output:
         splitGaps=dynamic(gapdir+"/hap{hap}/split/gaps.bed.{id}")
     params:
         n=config["recall_bin"],
         sge_opts="-cwd -pe serial 1 -l mfree=1G -l h_rt=04:00:00 -l disk_free=4G",
         ref=config["ref"],
-        sd=SNAKEMAKE_DIR
+        sd=SNAKEMAKE_DIR,
+        gd=gapdir
     shell:"""
-module unload anaconda; module load python/2.7.3; mkdir -p {wildcards.gapdir}/hap{wildcards.hap}/split;  {params.sd}/RecallRegionsInGapBed.py --asm {input.asm} --ref {params.ref} --gaps {input.gaps} --split {params.n} --splitDir {wildcards.gapdir}/hap{wildcards.hap}/split
+module unload anaconda; module load python/2.7.3; mkdir -p {params.gd}/hap{wildcards.hap}/split;  {params.sd}/RecallRegionsInGapBed.py --asm {input.asm} --ref {params.ref} --gaps {input.gaps} --split {params.n} --splitDir {params.gd}/hap{wildcards.hap}/split
 """
 
 
@@ -113,7 +149,7 @@ module unload anaconda; module load python/2.7.3; mkdir -p {wildcards.gapdir}/ha
 rule RecallGaps:
     input:
         gaps=gapdir+"/hap{hap}/split/gaps.bed.{id}",
-        asm="contigs.h{hap}.fasta"
+        asm=lambda wildcards: contigs[wildcards.hap]
     output:
         recalled=gapdir+"/hap{hap}/split/gaps.recalled.{id}",
         refRegions=gapdir+"/hap{hap}/split/regions.recalled.ref.{id}",
@@ -121,6 +157,7 @@ rule RecallGaps:
         sge_opts="-pe serial 6 -l mfree=2G -l h_rt=04:00:00 -l disk_free=4G",
         ref=config["ref"],
         ngmlr_cutoff=config["ngmlr_cutoff"],
+        do_recall=config["do_recall"],
         sd=SNAKEMAKE_DIR,
         gapdir=gapdir
     shell:"""
@@ -128,7 +165,12 @@ module unload anaconda;
 module load python/2.7.3;
 mkdir -p {params.gapdir}/hap{wildcards.hap};
 mkdir -p {params.gapdir}/hap{wildcards.hap}/indels;
-{params.sd}/RecallRegionsInGapBed.py --asm {input.asm} --ref {params.ref} --gaps {input.gaps} --out {output.recalled} --nproc 12 --refRegions {wildcards.gapdir}/hap{wildcards.hap}/split/regions.recalled.ref.{wildcards.id} --ngmlr {params.ngmlr_cutoff} --indels {output.recalled}.indel.bed --indelDir {wildcards.gapdir}/hap{wildcards.hap}/indels --blasr {params.sd}/../blasr/alignment/bin/blasr
+if [ {params.do_recall} != "no" ]; then
+  {params.sd}/RecallRegionsInGapBed.py --asm {input.asm} --ref {params.ref} --gaps {input.gaps} --out {output.recalled} --nproc 12 --refRegions {params.gapdir}/hap{wildcards.hap}/split/regions.recalled.ref.{wildcards.id} --ngmlr {params.ngmlr_cutoff} --indels {output.recalled}.indel.bed --indelDir {params.gapdir}/hap{wildcards.hap}/indels --blasr {params.sd}/../blasr/alignment/bin/blasr
+else
+  cp {input.gaps} {output.recalled}
+  touch {output.refRegions}
+fi
 
 """
 
@@ -142,7 +184,8 @@ rule MergeRecalledIndels:
         gapdir=gapdir
     shell:"""
 cat {params.gapdir}/hap{wildcards.hap}/indels/* | head -1 > {output.indelBed}
-cat {params.gapdir}/hap{wildcards.hap}/indels/* | grep -v "^#" | awk '{{if (NF==12) print;}}' | bedtools sort >> {output.indelBed}
+nf=`head {output.indelBed} | awk '{{ print NF;}}'`
+cat {params.gapdir}/hap{wildcards.hap}/indels/* | grep -v "^#" | awk -v fields=$nf '{{if (NF==fields) print;}}' | bedtools sort >> {output.indelBed}
 """
 
 rule MergeRetainedAndRecalledIndels:
@@ -196,14 +239,15 @@ rule MergeRecallGaps:
         gaps=dynamic(gapdir+"/hap{hap}/split/gaps.gaps_recalled_support.{id}"),
         refRegions=dynamic(gapdir+"/hap{hap}/split/regions.recalled.ref.{id}")
     output:
-        recalled=gapdir+"hap{hap}/gaps.recalled",
+        recalled=gapdir+"/hap{hap}/gaps.recalled",
         recalledRegions=gapdir+"/hap{hap}/regions.recalled.ref"        
     params:
         sge_opts="-pe serial 6 -l mfree=1G -l h_rt=04:00:00 -l disk_free=4G",
+        gapdir=gapdir
     shell:"""
 # Create the header, but some of the pasted headers have extra #'s in them, so
 # remove all but the first
-head -1 {wildcards.gapdir}/hap{wildcards.hap}/split/gaps.gaps_recalled_support.0 | \
+head -1 {params.gapdir}/hap{wildcards.hap}/split/gaps.gaps_recalled_support.0 | \
     tr -d "#" | awk '{{ print "#"$0; }}'> {output.recalled}
 cat {input.gaps} | grep -v "^#" | bedtools sort >> {output.recalled}
 cat {input.refRegions} > {output.recalledRegions}
@@ -244,7 +288,7 @@ rule AnnotateAllTRClusters:
     params:
         clusterSize=config["tr_cluster_size"],
         sge_opts="-cwd -pe serial 6 -l mfree=1G -l h_rt=12:00:00 -l disk_free=4G",
-        contigBed="contigs.h{hap}.fasta.sam.bed",
+        contigBed=lambda wildcards: contigs[wildcards.hap] + ".sam.bed",
         sd=SNAKEMAKE_DIR,
         tr=SNAKEMAKE_DIR+"/../regions/tandem_repeats_strs_slop.bed",
     shell:"""
@@ -270,7 +314,7 @@ rule FindTRClusters:
     params:
         clusterSize=config["tr_cluster_size"],
         sge_opts="-cwd -pe serial 6 -l mfree=1G -l h_rt=12:00:00 -l disk_free=4G",
-        contigBed="contigs.h{hap}.fasta.sam.bed",
+        contigBed=lambda wildcards: contigs[wildcards.hap] + ".sam.bed",
         sd=SNAKEMAKE_DIR,
         tr=SNAKEMAKE_DIR+"/../regions/tandem_repeats_strs_slop.bed",
     shell:"""
@@ -434,7 +478,8 @@ rule MakeBB:
         bbs=expand("SVQC/hap{{hap}}/{op}s.bb",op=["deletion","insertion"]),
     params:
         ref=config["ref"],
-        sd=SNAKEMAKE_DIR
+        sd=SNAKEMAKE_DIR,
+        sge_opts="-cwd -pe serial 1 -l mfree=1G -l h_rt=04:00:00"
     shell:"""
 cat {input.gaps} | bioawk -c hdr '{{ if (NR==1 || ($svType == "deletion" && $nAlt > 3) ) print;}}' | {params.sd}/../sv/utils/FixCoordinates.py /dev/stdin {input}.del {params.ref}.fai
 cat {input.gaps} | bioawk -c hdr '{{ if (NR==1 || ($svType == "insertion" && $nAlt > 3) ) print;}}' | {params.sd}/../sv/utils/FixCoordinates.py /dev/stdin {input}.ins {params.ref}.fai
@@ -532,10 +577,39 @@ rule SplitNormBed:
 egrep "^#|{wildcards.op}" {input.allbed} > {output.opbed}
 """
 
+rule LocalAssemblyBasedIndels:
+    input:
+        aln="alignments.h{hap}.bam"
+    output:
+        indels="SVQC/hap{hap}/indels_local.bed"
+    params:
+        sge_opts="-cwd -pe serial 1 -l mfree=2G -l h_rt=04:00:00 -l disk_free=4G",
+        sd=SNAKEMAKE_DIR,
+        ref=config["ref"],
+    shell:"""
+samtools view {input.aln}| {params.sd}/../sv/utils/PrintGaps.py {params.ref} /dev/stdin --maxLength 50 --minLength 2 --outFile /dev/stdout  |\
+  bedtools sort -header > {output.indels}
+"""
+
+rule SplitSupport:
+    input:
+        indels="SVQC/hap{hap}/indels_local.bed"
+    output:
+        indels_op=expand("SVQC/hap{{hap}}/indels_local.{op}.bed",op=ops)
+    params:
+        sge_opts="-cwd -pe serial 1 -l mfree=2G -l h_rt=04:00:00 -l disk_free=4G",
+        sd=SNAKEMAKE_DIR,
+        ref=config["ref"],
+    shell:"""
+for op in insertion deletion; do 
+  cat {input.indels} | bioawk -c hdr -v sv=$op '{{ if (NR ==1 || $svType == sv) print ;}}' > SVQC/hap{wildcards.hap}/indels_local.$op.bed
+done
+"""
+    
 rule AddSupport:
     input:
         opbed="SVQC/hap{hap}/indels.svqc.norm.{op}.bed",
-        locbed="fill-in/hap{hap}/indels.{op}.bed"
+        locbed="SVQC/hap{hap}/indels_local.{op}.bed"
     output:
         opsupport="SVQC/hap{hap}/indels.svqc.norm.{op}.bed.support",
     params:
@@ -549,7 +623,7 @@ cat {input.opbed} | \
  bedtools intersect -header -a stdin -b {input.locbed} -loj  |\
  grep -v "	-1	" |\
  awk '{{ if (NR == 1) {{ print $0"\\tqChrom\\tqStart\\tqEnd\\tqop\\tqsvlen"; }} else {{ print $0;}}}}' | \
-  {params.sd}/../indels//CountLocalIndelSupport.py | bioawk -c hdr '{{ if (NR == 1 || $locsup > 1) print;}}' > {output.opsupport}
+  {params.sd}/../indels/CountLocalIndelSupport.py | bioawk -c hdr '{{ if (NR == 1 || $locsup > 1) print;}}' > {output.opsupport}
 """
 
 rule MergeSupport:
@@ -616,7 +690,7 @@ rule LiftTRClusters:
     params:
         clusterSize=config["tr_cluster_size"],
         sge_opts="-cwd -pe serial 6 -l mfree=1G -l h_rt=12:00:00 -l disk_free=4G",
-        contigSam="contigs.h{hap}.fasta.sam",
+        contigSam=lambda wildcards: contigs[wildcards.hap] + ".sam",
         sd=SNAKEMAKE_DIR
     shell:"""
 {params.sd}/../mcutils/src/samLiftover {params.contigSam} {input.trClusters} {output.trClusterLifted} --dir 1 --printNA
@@ -630,7 +704,7 @@ rule MakeTRClusterFasta:
     params:
         clusterSize=config["tr_cluster_size"],
         sge_opts="-cwd -pe serial 6 -l mfree=1G -l h_rt=12:00:00 -l disk_free=4G",
-        contigs="contigs.h{hap}.fasta"
+        contigs=lambda wildcards: contigs[wildcards.hap]
     shell:"""
 samtools faidx {params.contigs} `cat {input.trClusterLifted} | awk '{{ print $1":"$2"-"$3;}}' | tr "\\n" " "` > {output.trClusterFasta}  
 """
@@ -668,7 +742,7 @@ rule MakeSVOpBins:
 
 rule FillInRegions:
     input:
-        contigBed="contigs.h{hap}.fasta.sam.bed",
+        contigBed=lambda wildcards: contigs[wildcards.hap] + ".sam.bed",        
     output:
         fillInRegion="fill-in/hap{hap}/region.bed"
     params:
@@ -708,7 +782,7 @@ uniq | \
 rule KeepNotCoveredFillIn:
     input:
         fillInHap="fill-in/hap{hap}/gaps.all.bed",
-        contigBed="contigs.h{hap}.fasta.sam.bed"
+        contigBed=lambda wildcards: contigs[wildcards.hap] + ".sam.bed"        
     output:
         fillIn="fill-in/hap{hap}/gaps.all_regions.bed"
     params:
@@ -763,7 +837,6 @@ rule FillInSupport:
         bams=config["bams"],
         sd=SNAKEMAKE_DIR
     shell:"""
-
 module unload anaconda; module load python/2.7.3;
 {params.sd}/../sv/utils/SpliceVariantsAndCoverageValidate.py --blasr {params.sd}/../blasr/alignment/bin/blasr --gaps {input.fillIn} --ref {params.ref} --reads {params.bams} --window 250 --flank 1000 --out {output.fillInCov} --nproc 8 --blasr {params.sd}/../blasr/alignment/bin/blasr 
 """

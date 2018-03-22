@@ -200,7 +200,7 @@ def ParseMSSMLine(vals):
         return None
 
 def ParseGapsLine(vals):
-    if len(header) > 0:
+    if len(header) >= header["svSeq"]:
         chromI    = header["chrom"]
         tStartI   = header["tStart"]
         tEndI     = header["tEnd"]
@@ -212,7 +212,7 @@ def ParseGapsLine(vals):
         chromI, tStartI, tEndI, svTypeI, svLenI, svSeq = 0,1,2,3,4,5
 
         
-    if len(vals) > 0:
+    if len(vals) >= header["svSeq"] :
         gap=Gap()
         gap.chrom=vals[chromI]
         gap.start=int(vals[tStartI])
@@ -523,7 +523,7 @@ def SpliceTestLine(svs):
         alnLines=proc.stdout.read()
         proc.wait()
         dbsFile.close()
-        WaitOnFile(dbsFile.name)
+#        WaitOnFile(dbsFile.name)
 
         fs=os.path.getsize(dbsFile.name)
         rs=os.path.getsize(readsFile.name)

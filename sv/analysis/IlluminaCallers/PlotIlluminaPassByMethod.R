@@ -5,16 +5,19 @@ options <- matrix(c("tab", "t", 2, "character",
                     "sample", "s", 2, "character"), byrow=T, ncol=4)
 
 args <- getopt(options)
+#setwd("/net/eichler/vol24/projects/structural_variation/nobackups/projects/HGSVG/analysis/IlluminaCombined/HG00514")
+#args <- data.frame(tab="integrated.DEL.bed.passfail",operation="DEL", sample="HG00514")
+
 if (is.null(args$ncaller) == TRUE) {
   args$ncaller=12
 }
 
-pf <- read.table(args$tab,header=T,comment.char="")
+pf <- read.table(as.character(args$tab),header=T,comment.char="")
 library(RColorBrewer)
 p <- brewer.pal(3,"Set1")
 
-ncallers <- sapply(pf$CALLER, function(i) length(strsplit(as.character(i), split=",")[[1]]))
-outName <- paste(args$sample, args$operation, "method_count.pdf", sep=".")
+ncallers <- sapply(pf$ALGORITHM, function(i) length(strsplit(as.character(i), split=",")[[1]]))
+outName <- paste(as.character(args$sample), args$operation, "method_count.pdf", sep=".")
 
 pft <- table(ncallers, pf$orth_filter)
 pft

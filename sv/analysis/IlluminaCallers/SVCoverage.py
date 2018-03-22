@@ -52,6 +52,10 @@ def ProcessLine(line):
     vals= line.split()
     regionStart = int(vals[1])
     regionEnd   = int(vals[2])
+    #
+    # Hack to get past bad biono calls where end=start
+    if regionEnd == regionStart:
+        regionEnd=regionStart+1
     region = vals[0] + ":" + vals[1] + "-" + vals[2]
     
     tempFileNames = []

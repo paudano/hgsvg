@@ -8,6 +8,7 @@ ap = argparse.ArgumentParser(description="Transform a variant VCF into a bed fil
 ap.add_argument("--vcf", help="VCF file.", required=True)
 ap.add_argument("--bionano", help="Convert bionano vcf", default=False, action='store_true')
 ap.add_argument("--operation", help="Specifically extract insertions or deletions.",default=None)
+ap.add_argument("--usesvlen", help="Add SVLen to end for insertion events.",default=False,action='store_true')
 ap.add_argument("--indv", help="Write for this individual", default=None)
 ap.add_argument("--filter", help="Add filter value.",default=False,action='store_true')
 ap.add_argument("--gtfields", help="Add these genotype fields.", default=[], nargs="+")
@@ -117,13 +118,17 @@ for line in vcfFile:
             elif "END" in infokv:
                 end = int(infokv["END"])
                 svLen = int(infokv["END"]) - int(vals[1])
-            elif "SVLEN" in infokv:
+            elif "SVLEN" in infokv and "END" not in infokv:
                 end = int(vals[1]) + abs(int(infokv["SVLEN"]))
                 svLen = infokv["SVLEN"]
                 infokv["END"] = str(end)
-            svType = "NONE"
+
+
+            svType = "NONE"            
             if "SVTYPE" in infokv:
                 svType = infokv["SVTYPE"]
+            if "SV_TYPE" in infokv:
+                svType = infokv["SV_TYPE"]
             elif "MERGE_TYPE" in infokv:
                 svType = infokv["MERGE_TYPE"]
             svOp = GetOp(vals[4])
@@ -131,7 +136,14 @@ for line in vcfFile:
                 start = vals[1]
             else:
                 start = str(int(vals[1])-1)
-            
+            if "SVLEN" in infokv:
+                svLen =abs(int(infokv["SVLEN"]))
+
+            if args.usesvlen:
+                if end == int(start) or end == int(start)+1:
+                    end=int(start)+svLen
+
+                
             lineVals = [vals[0], start, str(end), svType, str(svLen), seq]
             if len(args.fields) > 0:
                 lineVals += [infokv[f] for f in args.fields]

@@ -183,7 +183,7 @@ rule MakeChrAsmBed:
         sge_opts=config["grid_small"],
         hgsvg=SD+ "/.."
     shell:
-        "samToBed {input.asmSam}  --reportIdentity | bedtools sort > {output.asmBed}"
+        "{params.hgsvg}/mcutils/src/samToBed {input.asmSam}  --reportIdentity | bedtools sort > {output.asmBed}"
 
 rule MakeChrAsmBed6:
     input:

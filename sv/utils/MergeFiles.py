@@ -18,6 +18,7 @@ files = [open(fn) for fn in args.files]
 headers = [ files[i].readline()[1:].split() for i in range(0,len(files))]
 seen = {}
 if args.appendDups:
+    print "appendign dups"
     for i in range(0,len(headers)):
         for hi in range(0,len(headers[i])):
             if headers[i][hi] in seen:

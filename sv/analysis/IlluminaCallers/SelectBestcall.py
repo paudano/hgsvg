@@ -130,9 +130,15 @@ def GetTargetEnd(m):
         if m[te+2] == "-1":
             return -1
         else:
-            return int(m[ts]) + int(m[te+2])
+            if int(m[te]) == (-1):
+                return -1
+            else:
+                return int(m[ts]) + int(m[te+2])
     else:
-        return m[te]
+        if int(m[te]) == -1:
+            return -1
+        else:
+            return int(m[te])
 
 def ProcessMatches(matches):
     if len(matches) == 0:
@@ -148,7 +154,7 @@ def ProcessMatches(matches):
     optMatch=[]
     filtMatches =[]
     for m in matches:
-        if len(m) > te:
+        if len(m) > te and m[ts] != "." :
             filtMatches.append(m)
     if len(filtMatches) == 0:
         res="0"
@@ -163,6 +169,7 @@ def ProcessMatches(matches):
         outFile.write(res+"\n")
         
         return
+    
     ovps = [ Overlap([m[qs], GetEnd(m)], [m[ts], GetTargetEnd(m)])  for m in filtMatches ]
 
     maxOverlap = max(ovps)
@@ -195,7 +202,14 @@ def ProcessMatches(matches):
     outFile.write(res+"\n")
 
 
-    
+def GetKey(vals, headerKey):
+    key = "_".join(vals[0:3])
+    if "hap" in headerKey:
+        key+= "_"+vals[headerKey["hap"]]
+    if "svLen" in headerKey:
+        key+= "_"+vals[headerKey["svLen"]]
+    return key
+
 for line in infile:
     if line[0] == "#":
         headerVals = line.split()
@@ -212,7 +226,8 @@ for line in infile:
             qe = headerKey["tEnd"]
         continue
     vals = line.split()
-    key  = "_".join(vals[0:3])
+    key  = GetKey(vals, headerKey)
+
     if prev is not None and key != prev:
         ProcessMatches(matches)
         matches = []

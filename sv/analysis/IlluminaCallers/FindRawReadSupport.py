@@ -20,6 +20,7 @@ ap.add_argument("--nproc", help="Number of threads.", default=1,type=int)
 ap.add_argument("--header", help="Write header", default=False,action="store_true")
 ap.add_argument("--isbn", help="Is Bionano query", default=False,action="store_true")
 ap.add_argument("--bnop", help="Bionano op", default=None)
+ap.add_argument("--keeptemp", help="Keep temporary files.", default=False, action="store_true")
 ap.add_argument("--ts", help="Configure target start index", type=int,default=16)
 ap.add_argument("--te", help="Configure target end index", type=int, default=17)
 args = ap.parse_args()
@@ -80,8 +81,13 @@ def ProcessLine(line):
     sem.acquire()
     sys.stderr.write("Collecting alignments " + str(counter.value) + " of " + str(status.nLines) + "\n")
     counter.value+=1
-
-    covall = bamFiles[b].count_coverage(vals[0], int(vals[1]), int(vals[2]), quality_threshold=0)
+    try:
+        covall = bamFiles[b].count_coverage(vals[0], int(vals[1]), int(vals[2]), quality_threshold=0)
+    except:
+        sys.stderr.write("ERROR reading from bam file " + readsFofn[b] + "\n")
+        sem.release()
+        return [0,0]
+            
     maxCov = max(covall[0])
     sys.stderr.write("MAX COVERAGE: " + str(maxCov) + "\n")
     if maxCov > 200:
@@ -143,7 +149,6 @@ def ProcessLine(line):
     
     cmd = "bedtools intersect -a {} -b {} -loj >> {}".format(query.name, gapsFileName, isect.name)
     sys.stderr.write(cmd + "\n")
-
     p=subprocess.Popen(cmd, shell=True)
     p.wait()
     #subprocess.call(cmd.split(), stdout=isect)
@@ -171,8 +176,9 @@ def ProcessLine(line):
     else:
         return [0,0]
     tempFileNames.append(ovp.name)
-    cleanup = "/bin/rm  -f " + " ".join(tempFileNames)
-    subprocess.call(cleanup.split())
+    if args.keeptemp is False:
+        cleanup = "/bin/rm  -f " + " ".join(tempFileNames)
+        subprocess.call(cleanup.split())
 
 lines = callFile.readlines()
 headerLine = ""

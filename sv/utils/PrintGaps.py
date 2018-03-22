@@ -39,6 +39,7 @@ ap.add_argument("--nearest", help="Write distance to nearest end of contig. Usef
 ap.add_argument("--minDist", help="Minimum distance to side of contig. Exclude variants within this distance to the side of a contig.", default=0, type=int)
 ap.add_argument("--ignoreHP", help="Ignore insertions and deletions in homopolymers of this length or greater", default=None, type=int)
 ap.add_argument("--printStrand", help="Print strand of aligned contig", default=False, action='store_true')
+ap.add_argument("--printLength", help="Print length of aligned contig", default=False, action='store_true')
 ap.add_argument("--h1", help="Print h1 gaps here.", default=None)
 ap.add_argument("--h2", help="Print h1 gaps here.", default=None)
 
@@ -122,10 +123,13 @@ coordRe = re.compile(".*(chr.*)\.(\d+)-(\d+).*")
 outFile.write("#chrom\ttStart\ttEnd\tsvType\tsvLen\tsvSeq\ttsd\tqName\tqStart\tqEnd")
 if (args.context):
     outFile.write("\tcontext")
-if (args.qpos):
-    outFile.write("\tqpStart\tqpEnd\tqStrand\tqLen")
+if (args.printStrand):
+    outFile.write("\tqueryStrand")
+if (args.printLength):
+    outFile.write("\tqueryLength")
 if (args.fractionMasked):
     outFile.write("\tfrac")
+
 outFile.write("\n")
 
 
@@ -444,8 +448,10 @@ for samFileName in args.sam:
                         outFile.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(chrName, tPos, tPos + oplen, "insertion", oplen, gapSeq, tsd, aln.title, qPos, qPos + oplen))
                         if (args.context > 0):
                             outFile.write("\t{}".format(homopolymer))
-                        if (args.qpos):
-                            outFile.write("\t{}\t{}\t{}\t{}".format(qPos, qPos + len(gapSeq), aln.strand, len(aln.seq)))
+                        if (args.printStrand):
+                            outFile.write("\t{}".format(aln.qStrand))
+                        if (args.printLength):
+                            outFile.write("\t{}".format(aln.seq))
 
 			if args.fractionMasked is True:
 			    nMasked = gapSeq.count('N')

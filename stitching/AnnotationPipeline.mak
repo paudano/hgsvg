@@ -70,10 +70,13 @@ insertion/insertions.annotated.bed: insertion/rm/insertions.fasta.out
 # Partially masked sequences may be fully tandem repeats, annotate this now.
 
 insertion/insertions.partial_masked.bed.trf: insertion/insertions.annotated.bed
-	$(PBS)/RunTRF.sh insertion/insertions.partial_masked.bed
+	$(PBS)/RunTRF.sh insertion/insertions.partial_masked.bed insertion/insertions.partial_masked.bed.tr_tab
+	paste insertion/insertions.partial_masked.bed insertion/insertions.partial_masked.bed.tr_tab > insertion/insertions.partial_masked.bed  > $@
 
 deletion/deletions.partial_masked.bed.trf: deletion/deletions.annotated.bed
-	$(PBS)/RunTRF.sh deletion/deletions.partial_masked.bed
+	$(PBS)/RunTRF.sh deletion/deletions.partial_masked.bed deletion/deletions.partial_masked.bed.tr_tab
+	paste deletion/deletions.annotated.bed  deletion/deletions.partial_masked.bed.tr_tab > $@
+
 
 
 # 

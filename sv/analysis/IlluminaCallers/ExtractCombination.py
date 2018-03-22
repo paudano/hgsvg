@@ -17,9 +17,12 @@ h = { hv[i] : i for i in range(0,len(hv)) }
 
 combs = args.comb.split(",")
 sys.stdout.write("#" + "\t".join(hv))
+key = "CALLER"
+if "ALGORITHM" in h:
+    key = "ALGORITHM"
 for line in bedFile:
     vals = line.split()
-    callers = vals[h["CALLER"]]
+    callers = vals[h[key]]
     nCallers=0
     for c in combs:
         if c in callers:

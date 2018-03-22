@@ -73,7 +73,9 @@ rule all:
         clusterCount=[config["uwsv"]+".cluster-count"] + expand("{mssm}.uw.cluster-count",mssm=allMSSMBase.values()),
         clusterSummary="cluster-summary.txt",
         mergedBed="sv_calls.bed",
-        mergedBedWithLoci="sv_calls.bed.loci",        
+        annotatedMergedBed="sv_calls.bed.annotated",
+        annotatedMergedBedFixed="sv_calls.bed.annotated.tr_fixed",        
+        mergedBedWithLoci="sv_calls.bed.annotated.tr_fixed.loci",
         svMSSMSource="sv_calls.base.bed",
         clusteredSVs="cluster-count.tsv",
         svUWSource="sv_calls.uw-source.bed",
@@ -93,18 +95,13 @@ rule all:
         plotnotrf=config["sample"]+".parental_coverage.no_trf.pdf",        
         inh="inheritance.bed",
         hethom="het_hom_summary.txt",
-        inherited="sv_calls.inherited.bed",
-        merge="sv_calls.bed.trf",
-        alt="sv_calls.bed.trf.alt",
-        svfixdel="sv_calls.fix_del.bed",
-        svinsann="fix_del/insertion/insertions.annotated.bed",
-        svdelann="fix_del/deletion/deletions.annotated.bed",
+#        merge="sv_calls.bed.trf",
+        alt="sv_calls.bed.annotated.alt",
+#        altFixed="sv_calls.bed.trf.alt.fixed",
         reportMSSM=expand("{mssm}.uw.bed.filt.report", mssm=allMSSMBase.values()),
-        distreport="mssm.bed.filt.distance_report",
+#        distreport="mssm.bed.filt.distance_report",
         optSummary=expand("opt_bn_overlap.bed.filt.{op}.bed.summary",op=shortOps),
         exons=expand("{sample}.exons.{op}.bed",sample=config["sample"],op=longOps),
-        svfixann="fix_del/sv_calls.ann.bed",
-        svfixvcf="fix_del/sv_calls.ann.vcf",
         sv_intv="sv_calls.intv",
         sv_clust="sv_calls.clust",
         sv_tr="sv_calls.clust.tr",
@@ -125,181 +122,13 @@ rule all:
         dipClusters=gapdir+"/dip_tr_clusters.bed"
 
 
-rule AddSVQCLoci:
-    input:
-        svcalls="sv_calls.bed",
-        loci="../SVQC/tr_clusters.calls.bed"
-    output:
-        comb="sv_calls.bed.loci"
-    params:
-        sge_opts=config["sge_small"],
-        ref=config["ref"],
-        sd=SNAKEMAKE_DIR,
-    shell:"""
-{params.sd}/MergeFiles.sh --files {input.svcalls} {input.loci} --out {output.comb}
-"""    
-        
-rule MakeSVTRRegions:
-    input:
-        clust="sv_calls.clust"
-    output:
-        wide="sv_calls.clust.wide"
-    params:
-        sge_opts=config["sge_small"],
-        ref=config["ref"],
-        sd=SNAKEMAKE_DIR,
-    shell:"""
-cat {input.clust} | awk '{{ if ($4 > 3) print;}}' | \
-  bedtools intersect -loj -a stdin -b {params.sd}/../regions/tandem_repeats.bed  | \
-  bedtools groupby -g 1-3 -c 6,7 -o min,max -full | \
-  awk '{{ print $1"\\t"$9"\\t"$10; }}' | \
-  grep -v "\-1" | \
-  bedtools slop -i stdin -g {params.ref}.fai -b 2000 > {output.wide}
-"""
-rule MakeSVTRClustersAnnot:
-    input:
-        clust="sv_calls.clust"
-    output:
-        tr="sv_calls.clust.tr.annot"
-    params:
-        sge_opts=config["sge_small"],
-        ref=config["ref"],
-        sd=SNAKEMAKE_DIR,
-    shell:"""
-bedtools intersect -a {input.clust} -b {params.sd}/../regions/tandem_repeats.bed  -loj | bedtools groupby -g 1-3 -c 4 -o first -full > {output.tr}
+################################################################################
+##
+## BioNano Setup: transfom bionano calls into separate insertion and deletion calls
+## with a maximum size.
+##
+################################################################################
 
-"""
-rule MakeSVTRClusters:
-    input:
-        clust="sv_calls.clust"
-    output:
-        tr="sv_calls.clust.tr"
-    params:
-        sge_opts=config["sge_small"],
-        ref=config["ref"],
-        sd=SNAKEMAKE_DIR,
-    shell:"""
-cat {input.clust} | wc -l > {output.tr}
-bedtools intersect -a {input.clust} -b {params.sd}/../regions/tandem_repeats.bed -u | wc -l >> {output.tr}
-"""
-
-rule MakeSVTRClustersBG:
-    input:
-        clust="sv_calls.clust"
-    output:
-        tr="sv_calls.clust.tr.bg"
-    params:
-        sge_opts=config["sge_small"],
-        ref=config["ref"],
-        sd=SNAKEMAKE_DIR,
-    shell:"""
-
-for i in `seq 1 100`; do
-bedtools shuffle -i {input.clust} -g {params.ref}.fai -incl {params.sd}/../regions/Regions.Called.bed | \
-  bedtools sort | \
-  bedtools merge | \
-  bedtools intersect -a stdin -b {params.sd}/../regions/tandem_repeats.bed -u | wc -l >> {output.tr}
-done
-    
-"""
-    
-    
-        
-rule MakeSVIntv:
-    input:
-        sv="sv_calls.bed",
-    output:
-        intv="sv_calls.intv"
-    params:
-        sge_opts=config["sge_small"],
-        ref=config["ref"],
-        sd=SNAKEMAKE_DIR,
-    shell:"""
-cat {input.sv} | awk '{{ if ($5 == "insertion") {{ $3=$2+1;}} print;}}' | tr " " "\\t" | cut -f 1-5 > {output.intv}
-"""
-
-rule MakeSVClust:
-    input:
-        intv="sv_calls.intv"
-    output:
-        clust="sv_calls.clust"
-    params:
-        sge_opts=config["sge_small"],
-        ref=config["ref"],
-        sd=SNAKEMAKE_DIR,
-    shell:"""
-bedtools merge -header -i {input.intv} -d 1000 -c 4 -o count | awk '{{ if ($4 > 1) print;}}' > {output.clust}
-"""    
-
-    
-rule FixDelsInSVCalls:
-    input:
-        sv="sv_calls.bed",
-    output:
-        svdel="sv_calls.fix_del.bed",
-    params:
-        sge_opts=config["sge_small"],
-        ref=config["ref"],
-        sd=SNAKEMAKE_DIR,
-    shell:"""
-{params.sd}/FixDeletionCall.py --svbed {input.sv} --out {output.svdel} --ref {params.ref}
-"""
-
-rule AnnotateFixedDeletions:
-    input:
-        svdel="sv_calls.fix_del.bed"
-    output:
-        svinsann="fix_del/insertion/insertions.annotated.bed",
-        svdelann="fix_del/deletion/deletions.annotated.bed",
-    params:
-        sd=SNAKEMAKE_DIR,
-        sge_opts=config["sge_small"],
-    shell:"""
-mkdir -p fix_del
-cp {input.svdel} fix_del/
-cd fix_del
-make -f {params.sd}/../stitching/AnnotationPipeline.mak GAPS={input.svdel} deletion/NONE.bed insertion/NONE.bed 
-cd ..
-"""
-
-rule CombineAnnotatedFixedDeletions:
-    input:
-        svinsann="fix_del/insertion/insertions.annotated.bed",
-        svdelann="fix_del/deletion/deletions.annotated.bed",
-    output:
-        svfixann="fix_del/sv_calls.ann.bed",
-        svfixvcf="fix_del/sv_calls.ann.vcf",
-    params:
-        sd=SNAKEMAKE_DIR,
-        sge_opts=config["sge_small"],
-        ref=config["ref"],
-    shell:"""
-head -1 {input.svdelann} > {output.svfixann}
-cat {input.svdelann} {input.svinsann} | bedtools sort >> {output.svfixann}
-{params.sd}/../sv/utils/variants_bed_to_vcf.py --bed {output.svfixann} --vcf {output.svfixvcf} --type sv --addci 5 --fields NALT nAlt NREF nRef SVANN svAnn SVREP svRep SVCLASS svClass NTR nTR BN bnKey SOURCE source --source PHASED-SV --info \"##INFO=<ID=NALT,Number=1,Type=Integer,Description=\\\"Number of reads supporting variant\\\">" "##INFO=<ID=NREF,Number=1,Type=Integer,Description=\\\"Number of reads supporting reference\\\">" "##INFO=<ID=SVANN,Number=1,Type=String,Description=\\\"Repeat annotation of variant\\\">" "##INFO=<ID=SVREP,Number=1,Type=Float,Description=\\\"Fraction of SV annotated as mobile element or tandem repeat\\\">"  "##INFO=<ID=SVCLASS,Number=1,Type=String,Description=\\\"General repeat class of variant\\\">"  "##INFO=<ID=NTR,Number=1,Type=Integer,Description=\\\"Number of tandem repeat bases\\\">"  "##INFO=<ID=BN,Number=1,Type=Float,Description=\\\"Overlap with BioNanoGenomics call.\\\">"  "##INFO=<ID=SOURCE,Number=1,Type=String,Description=\\\"Source method of call, with additional information describing haplotype.\\\">" --reference {params.ref}
-"""
-    
-    
-rule SummarizeExons:
-    input:
-        sv="sv_calls.bed",
-    output:
-        exons=config["sample"] + ".exons.{op}.bed",
-    params:
-        sge_opts=config["sge_small"],
-        exonFile=config["exons"]
-    shell:"""
-geneHeader=`head -1 {params.exonFile}`
-egrep "^#|{wildcards.op}" {input.sv} | \
-  bioawk -c hdr '{{ if (substr($0,0,1) == "#") \
-                   {{ print;}} \
-                   else {{ if ($svType == "insertion") {{ $3=$2+1;}} print;}} }}' | \
-  tr " " "\\t" | \
-  bedtools intersect -header -a stdin -b {params.exonFile} -loj | \
-  bedtools groupby -g 1-4 -c 4 -o first -full | \
-  awk -v hdr="$header" '{{ if (substr($0,0,1) == "#") print $0"\\t"hdr; }}' > {output.exons}
-"""
-    
 rule MakeBNCalls:
     input:
         bnvcf=config["bnvcf"]
@@ -329,6 +158,69 @@ egrep "^#|{wildcards.op}" {input.bncalls} | awk '{{ if (substr($0,0,1) == "#" ||
 
 shortOpToLongOp={"del": "deletion", "ins" : "insertion"}
 
+################################################################################
+##
+## MsPAC Setup: transfom bionano calls into separate insertion and deletion calls
+## with a maximum size.
+##
+################################################################################
+
+
+#
+# Copy MSSM calls from source directory
+#
+rule MakeMSSMLocal:
+    input:
+        mssm=lambda wildcards: fullMSSM[wildcards.mssm]
+    output:
+        local="local.{mssm}"
+    params:
+        sge_opts="-pe serial 1 -l mfree=1G -l h_rt=01:00:00",
+        sn=SNAKEMAKE_DIR,
+    shell:"""
+bedtools intersect -a {input.mssm} -b {params.sn}/../regions/Regions.Called.bed -u -wa > {output.local}
+"""
+
+#
+# Transform MSSM calls into UW format so they fit into the QC pipeline
+#       
+rule MakeMSSMUWpre:
+    input:
+        mssm="local.{mssm}"
+    output:
+        mssmUW="{mssm}.uw"
+    params:
+        sge_opts="-pe serial 1 -l mfree=1G -l h_rt=01:00:00",
+        sd=SNAKEMAKE_DIR
+    shell:"""
+{params.sd}/../sv/utils/mssm/MSSMToUW.py {input.mssm} --no-reformat --out /dev/stdout | bedtools sort -header | uniq > {output.mssmUW}
+
+"""
+
+#
+#  Sort MSSM calls and do some early QC: filter out too small of calls and too large.
+#
+rule MakeMSSMSort:
+    input:
+        mssm="{mssm}.uw"
+    output:
+        mssmSorted="{mssm}.sorted"
+    params:
+        sge_opts="-pe serial 1 -l mfree=1G -l h_rt=01:00:00"
+    shell:"""
+nf=`head -1 {input.mssm} | awk '{{ print NF;}}'`
+module unload anaconda; module unload python/3.5.2; module load python/2.7.3; module load bedtools/2.25.0; bedtools sort -header -i {input.mssm} | awk '{{ if (substr($0,0,1) == "#" || ($3-$2 >= 50 && $3-$2 < 500000)) print;}}' | bedtools groupby -g 1-3 -c 4 -o first -full -header | cut -f 1-$nf > {output.mssmSorted}
+"""
+
+################################################################################
+##
+## Add external support for SV calls: BioNano overlap and raw read support
+##
+
+#
+# First add bionano support for MSSM calls
+#
+
 rule AnnotateSourceDataBNOverlap:
     input:
         mssmCalls="{mssm}.sorted",
@@ -347,132 +239,14 @@ ratioIndex=$(($nmssm+$nbm+3))
 """
 
 
-rule AnnotateBNOverlap:
-    input:
-        svcalls="{caller}.bed.filt.{op}.bed",
-        bncalls="calls_bn.{op}.bed"
-    output:
-        svBnOvp="bn_overlap.{caller}.bed.filt.{op}.bed",
-    params:
-        sge_opts=config["sge_small"],
-        sd=SNAKEMAKE_DIR,
-    shell:"""
-nbn=`head -1 {input.bncalls} | wc -w`
-nsv=`head -1 {input.svcalls} | wc -w`
-ncol=$(($nbn+$nsv+1))
+##############################################
+##
+## Add raw read support for MSSM calls
+##
 
-{{ {{ head -1 {input.bncalls}; head -1 {input.svcalls} | {params.sd}/../sv/utils/AddIndex.py _2; }} | paste -s ; bedtools intersect -a {input.bncalls} -b {input.svcalls} -loj; }} | bioawk -c hdr '{{ bnsv=$svLen; if (bnsv < 0) {{ bnsv=-1*bnsv; }}; svdiff=bnsv -$svLen_2; if (svdiff < 0) {{ svdiff =-1*svdiff;}} ; if (substr($0,0,1) == "#") {{ print $0"\\tbnOvp"; }} else {{ if ($tStart_2 == "-1") {{ print $0"\\t1";}} else {{ print $0"\\t"svdiff/bnsv; }} }}  }}' | bedtools groupby -header -g 1-3 -c $ncol -o min -full | cut -f 1-$ncol > {output.svBnOvp}
-"""
-
-
-    
-
-rule AnnotateBestBNOverlap:
-    input:
-        uwcalls="bn_overlap.uw.bed.filt.{op}.bed",
-        mssmcalls="bn_overlap.mssm.bed.filt.{op}.bed"        
-    output:
-        optSvCalls="opt_bn_overlap.bed.filt.{op}.bed"
-    params:
-        sge_opts=config["sge_small"],
-        sd=SNAKEMAKE_DIR,
-        maxRatio=config["maxRatio"]
-    shell:"""
-{params.sd}/CombineBNAnnotatedFiles.py {input.uwcalls} uw {input.mssmcalls} mssm {params.maxRatio} {wildcards.op} > {output.optSvCalls}
-"""
-
-
-rule SelectBestBNOverlap:
-    input:
-        svCalls="{source}.bed.filt.{op}.bed",
-        optCalls="opt_bn_overlap.bed.filt.{op}.bed"
-    output:
-        svFilt="bn_filt.{source}.{op}.bed"
-    params:
-        sge_opts=config["sge_small"],
-        sd=SNAKEMAKE_DIR,
-    shell:"""
-{params.sd}/SelectBNSupportedCalls.py --svcalls {input.svCalls} --bntable {input.optCalls} --source {wildcards.source} --out {output.svFilt}
-"""
-
-rule SummarizeBestBNOverlap:
-    input:
-        optCalls="opt_bn_overlap.bed.filt.{op}.bed"
-    output:
-        optSummary="opt_bn_overlap.bed.filt.{op}.bed.summary"
-    params:
-        sge_opts=config["sge_small"],
-        sd=SNAKEMAKE_DIR,
-        sample=config["sample"]
-    shell:"""
-mspac=`cat {input.optCalls} | bioawk -c hdr '{{ if ($opSource == "mssm" ) print $bnsvlen; }}' | {params.sd}/stats.py --noround --noheader`
-phasedsv=`cat {input.optCalls} | bioawk -c hdr '{{ if ($opSource == "uw" ) print $bnsvlen; }}' | {params.sd}/stats.py --noround --noheader`
-echo {params.sample} "mspac" {wildcards.op} $mspac | tr " " "\\t" > {output.optSummary}
-echo {params.sample} "phasedsv" {wildcards.op} $phasedsv | tr " " "\\t" >> {output.optSummary}
-"""
-
-    
-otherSource = { "mssm": "uw", "uw" : "mssm" }
-
-#rule ExcludeBnFilteredCalls:
-#    input:
-#        bnSelected="bn_filt.{source}.{op}.bed"
-#        included="{source}.bed.filt.{op}.bed"
-#        excluded=lambda wildcards: otherSource[wildcards.source] + ".bed.filt.{op}.bed"
-#    output:
-#        
-    
-
-rule AddInheritance:
-    input:
-        svCalls="sv_calls.bed",
-        parentCov=expand("parent.cov.{pa}.bed", pa=["fa", "mo"])
-    output:
-        inherit="sv_calls.inherited.bed"
-    params:
-        sge_opts=config["sge_small"],
-    shell:"""
-paste {input.svCalls} {input.parentCov} > {output.inherit}
-"""
-
-rule MakeMSSMLocal:
-    input:
-        mssm=lambda wildcards: fullMSSM[wildcards.mssm]
-    output:
-        local="local.{mssm}"
-    params:
-        sge_opts="-pe serial 1 -l mfree=1G -l h_rt=01:00:00",
-        sn=SNAKEMAKE_DIR,
-    shell:"""
-bedtools intersect -a {input.mssm} -b {params.sn}/../regions/Regions.Called.bed -u -wa > {output.local}
-"""
-
-        
-rule MakeMSSMUWpre:
-    input:
-        mssm="local.{mssm}"
-    output:
-        mssmUW="{mssm}.uw"
-    params:
-        sge_opts="-pe serial 1 -l mfree=1G -l h_rt=01:00:00",
-        sd=SNAKEMAKE_DIR
-    shell:"""
-{params.sd}/../sv/utils/mssm/MSSMToUW.py {input.mssm} --no-reformat --out /dev/stdout | bedtools sort -header | uniq > {output.mssmUW}
-
-"""
-
-rule MakeMSSMSort:
-    input:
-        mssm="{mssm}.uw"
-    output:
-        mssmSorted="{mssm}.sorted"
-    params:
-        sge_opts="-pe serial 1 -l mfree=1G -l h_rt=01:00:00"
-    shell:"""
-nf=`head -1 {input.mssm} | awk '{{ print NF;}}'`
-module unload anaconda; module unload python/3.5.2; module load python/2.7.3; module load bedtools/2.25.0; bedtools sort -header -i {input.mssm} | awk '{{ if (substr($0,0,1) == "#" || ($3-$2 >= 50 && $3-$2 < 500000)) print;}}' | bedtools groupby -g 1-3 -c 4 -o first -full -header | cut -f 1-$nf > {output.mssmSorted}
-"""
-
+##
+## Split up file for faster processing.
+##
 rule SplitMSSM:
     input:
         mssm="{mssm}.sorted"
@@ -487,7 +261,10 @@ rule SplitMSSM:
 module unload anaconda; module unload python/3.5.2; module load python/2.7.3; mkdir -p {wildcards.mssm}.sorted.split; {params.sd}/../sv/utils/SpliceVariantsAndCoverageValidate.py --gaps {input.mssm} --split {params.n} --splitDir {wildcards.mssm}.sorted.split --tmpdir $TMPDIR --ref {params.ref} --blasr {params.sd}/../blasr/alignment/bin/blasr 
 """
 
-    
+
+##
+## Check raw read coverage for MSSM calls
+##
 rule MakeMSSMSupport:
     input:
         mssm="{mssm}.sorted.split/gaps.bed.{id}",
@@ -502,7 +279,9 @@ rule MakeMSSMSupport:
 {params.sd}/../sv/utils/SpliceVariantsAndCoverageValidate.py  --gaps {input.mssm} --reads {input.reads} --out {output.cov} --nproc 12 --ref {params.ref} --tmpdir $TMPDIR --maxSize 50000 --flank 2000 --window 1000 --blasr {params.sd}/../blasr/alignment/bin/blasr
 """
 
-
+##
+## Combine raw read support for MSSM calls.
+##
 rule CombineMSSMTables:
     input:
         mssmGaps="{mssm}.sorted.split/gaps.bed.{id}",    
@@ -527,55 +306,31 @@ rule MergeMSSMSupport:
 head -1 {wildcards.mssm}.sorted.split/gaps_cov.0 > {output.cov}
 grep -hv "^#" {input.mssmComb} | sed '/^\s*$/d' | bedtools sort >> {output.cov}
 """
- 
 
-#rule MakeMSSMBN:
-#    input:
-#        mssm="{mssm}.sorted"
-#    output:
-#        mssmBN="{mssm}.to-bn.bed"
-#    params:
-#        sge_opts=config["sge_small"]
-#    shell:
-#        "module unload anaconda && module load python/2.7.3 && ~/projects/HGSVG/hgsvg/sv/utils/mssm/MSSMToUW.py {input.mssm} --keepCoordinates > {output.mssmBN} "
-#       
-#   
-#rule MakeMSSMUW:
-#    input:
-#        mssm=lambda wildcards: mssmBaseToPath[wildcards.base] + ".sorted"
-#    output:
-#        mssmBN="{base}.uw.bed"
-#    params:
-#        sge_opts=config["sge_small"]
-#    shell:
-#        "module unload anaconda && module load python/2.7.3 && ~/projects/HGSVG/hgsvg/sv/utils/mssm/MSSMToUW.py {input.mssm} > {output.mssmBN} "
-#
-#
 
-rule MakeMSSMBNAnnotation:
+################################################################################
+#
+# Now that read coverage and bionano coverage are determined for MSSM calls, filter
+# out potentially false positive calls.
+#
+rule FilterCallsByPBAndBNSupportMSSM:
     input:
-        mssm="{base}.sorted",
-        bionano=config["bionano"]
+        mssmCov="{base}.uw.cov",
+        bnSupport="bn_support.{base}.tab"
     output:
-        mssmBN="{base}.uw.bed.bn"
+        filtMSSM="{base}.uw.bed.filt"
     params:
         sge_opts=config["sge_small"],
-        maxRatio=config["maxRatio"]
-    shell:
-        "~/projects/HGSVG/hgsvg/sv/utils/AnnotateBedWithBioNano.py --bionano {input.bionano} --table {input.mssm} --out {output.mssmBN} --source MSSM --maxRatio {params.maxRatio}"
-
-    
-rule MakeUWAnnotation:
-    input:
-        uw=config["uwsv"],
-        bionano=config["bionano"]
-    output:
-        uwBN="uw.bed.bn"
-    params:
-        sge_opts=config["sge_small"],
-        maxRatio=config["maxRatio"]
-    shell:
-        "~/projects/HGSVG/hgsvg/sv/utils/AnnotateBedWithBioNano.py --bionano {input.bionano} --table {input.uw} --out {output.uwBN} --source UW --maxRatio {params.maxRatio}"
+        minPbSupport=config["pbSupport"],
+        maxBNRatio=config["maxRatio"]
+    shell:"""
+  paste {input.mssmCov} {input.bnSupport} | \
+    bioawk -c hdr \
+ '{{ if (substr($0,0,1) == "#") {{ print; }} \
+     else {{ \
+       if (((substr($mssmQC,0,4) == "PASS" || $mssmQC == "hap2_resolved_P" || $mssmQC == "hap1_resolved_P") && \
+          (( $tEnd-$tStart < 10000 && $nAlt > {params.minPbSupport}) || ($bnKey != "." && $bnOvp < {params.maxBNRatio} )))) print;}} }}' > {output.filtMSSM}
+"""
 
 rule MakeMSSMFilteringReport:
     input:
@@ -602,57 +357,6 @@ rule MakeMSSMFilteringReport:
     END {{ print qcPass"\\t"altPass ; }}' > {output.reportMSSM}
 """
 
-rule MakeMSSMDistanceReport:
-    input:
-        mssm="mssm.bed.filt",
-        uw="uw.bed.filt"
-    output:
-        distreport="mssm.bed.filt.distance_report"
-    params:
-        sge_opts=config["sge_small"],
-        ref=config["ref"],
-    shell:"""
-nfm=`head -1 {input.mssm} | awk '{{ print NF;}}'`
-nfu=`head -1 {input.uw} | awk '{{ print NF;}}'`
-nft=$(($nfm+nfu+1))
-nelem=`grep -v "^#" {input.mssm} | wc -l`
-i=0;
-rm -f mssm.shuff;
-cut -f 1-3 {input.mssm} > mssm.shuff.bed
-nshuff=$(($nfu+4))
-while [ $i -lt 10000 ]; do
-   bedtools shuffle -i mssm.shuff.bed -g {params.ref}.fai | \
-   bedtools sort | \
-   bedtools closest -t first -d -a stdin -b {input.uw} | cut -f $nshuff | awk '{{ if ($1 < 1000) print;}}' | wc -l >> mssm.shuff;
-   i=$(($i+1))
-done
-   
-nclose=`bedtools closest -t first -d -a {input.mssm} -b {input.uw} | cut -f $nft | awk '{{ if ($1 < 1000) print;}}' | wc -l`
-echo -e $nelem"\\t"$nclose > {output.distreport}
-"""
-    
-        
-
-rule FilterCallsByPBAndBNSupportMSSM:
-    input:
-        mssmCov="{base}.uw.cov",
-        bnSupport="bn_support.{base}.tab"
-    output:
-        filtMSSM="{base}.uw.bed.filt"
-    params:
-        sge_opts=config["sge_small"],
-        minPbSupport=config["pbSupport"],
-        maxBNRatio=config["maxRatio"]
-    shell:"""
-  paste {input.mssmCov} {input.bnSupport} | \
-    bioawk -c hdr \
- '{{ if (substr($0,0,1) == "#") {{ print; }} \
-     else {{ \
-       if (((substr($mssmQC,0,4) == "PASS" || $mssmQC == "hap2_resolved_P" || $mssmQC == "hap1_resolved_P") && \
-          (( $tEnd-$tStart < 10000 && $nAlt > {params.minPbSupport}) || ($bnKey != "." && $bnOvp < {params.maxBNRatio} )))) print;}} }}' > {output.filtMSSM}
-"""
-
-
 ###########################################################
 ###
 ### Merging MSPAC haplotypes -- requires merging de novo
@@ -678,9 +382,18 @@ head -1 {input.mssmh[1]} > {output.comb[1]}
 cat   {input.mssmh[1]} {input.mssmdn}.no_h2 | grep -v "^#" | sort -k1,1 -k2,2n -k3,3n >> {output.comb[1]}
 """
 
-#
-# Mirror the structure used in SVQC. Eventually the same rules will be used
-#
+
+
+################################################################################
+##
+## Now do tandem repeat cluster filtering of combined calls.  This is quite a few
+## steps, and is mirrored from SVQC.
+##
+## 1. Copy into dir structure that mimics the SVQC dirs.
+## 2. Intersect calls iwith tandem_repeats to define clusters.
+## 3. Merge tr clusters from haplotypes
+## 4. Merge tr clusters with SVQC defined clusters for consistency.
+## 5. 
     
 rule SetupForFiltering:
     input:
@@ -719,6 +432,7 @@ cat {input.filt} | \
   bedtools sort > {output.trClusters}
 """
 
+## Step 4, merge from halotypes into diploid
 rule MergeTRClusters:
     input:
         trClusters=expand(gapdir+"/hap{hap}/tr_clusters.bed",hap=mssmHaps)
@@ -813,14 +527,14 @@ rule FilterRecalledGaps:
     shell:"""
 nf=`head -1 {input.gaps} | awk '{{ print NF;}}'`
 bedtools intersect -header -f 0.9 -v -a {input.gaps} -b {params.inversions}  | \
-bedtools groupby -header -g 1-5 -c 1 -o first -full | cut -f 1-$nf > {output.filt}
+bedtools groupby -header -g 1-6 -c 1 -o first -full | cut -f 1-$nf > {output.filt}
 """
 
     
 rule AnnotateTRZygosity:
     input:
         trZygBed="mssm/hap{hap}/tr_net.tab.zyg.bed",
-        filt=expand("{mssm}.hap{{hap}}.bed.uw.bed.filt.comb",mssm=config["sample"]),
+        filt=expand("mssm/hap{{hap}}/gaps.recalled.noclust",mssm=config["sample"]),
     output:
         filtTR="mssm/hap{hap}/gaps.recalled.noclust.tr_bed"
     params:
@@ -834,7 +548,7 @@ fe=$(($nf+4))
 cat {input.filt} | {params.sd}/..//sv/utils/ToPoint.sh | \
  bedtools intersect -header -loj -a stdin -b {input.trZygBed} | \
  awk '{{ if (NR==1) {{ print $0"\\ttrChrom\\ttrStart\\ttrEnd\\ttrScore\\ttrExpand\\ttrHap\\ttrHapDiff";}} else {{ print; }}}}' | \
- bedtools groupby -header -g 1-5 -c $fs -o first -full | \
+ bedtools groupby -header -g 1-6 -c $fs -o first -full | \
  bioawk -c hdr '{{ print $trHap"\\t"$trChrom"_"$trStart"_"$trEnd"\\t"$trHapDiff;}}' > {output.filtTR}                
 """
     
@@ -886,6 +600,270 @@ head -1 {output.comb}.not_tr > {output.comb}.no_source
 cat {output.comb}.not_tr {output.comb}.homtr-0 {output.comb}.hettr | grep -v "^#" | bedtools sort >> {output.comb}.no_source
 cat {output.comb}.no_source | awk '{{ if (NR ==1) {{ print $0"\\tsource"; }} else {{ print $0"\\tMSSM";}} }}' > {output.comb}
 """
+    
+###############################################################
+## For both the UW and MSSM calls, 
+
+rule AnnotateBNOverlap:
+    input:
+        svcalls="{caller}.bed.filt.{op}.bed",
+        bncalls="calls_bn.{op}.bed"
+    output:
+        svBnOvp="bn_overlap.{caller}.bed.filt.{op}.bed",
+    params:
+        sge_opts=config["sge_small"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+nbn=`head -1 {input.bncalls} | wc -w`
+nsv=`head -1 {input.svcalls} | wc -w`
+ncol=$(($nbn+$nsv+1))
+
+{{ {{ head -1 {input.bncalls}; head -1 {input.svcalls} | {params.sd}/../sv/utils/AddIndex.py _2; }} | paste -s ; bedtools intersect -a {input.bncalls} -b {input.svcalls} -loj; }} | bioawk -c hdr '{{ bnsv=$svLen; if (bnsv < 0) {{ bnsv=-1*bnsv; }}; svdiff=bnsv -$svLen_2; if (svdiff < 0) {{ svdiff =-1*svdiff;}} ; if (substr($0,0,1) == "#") {{ print $0"\\tbnOvp"; }} else {{ if ($tStart_2 == "-1") {{ print $0"\\t1";}} else {{ print $0"\\t"svdiff/bnsv; }} }}  }}' | bedtools groupby -header -g 1-3 -c $ncol -o min -full | cut -f 1-$ncol > {output.svBnOvp}
+"""
+
+
+    
+
+rule AnnotateBestBNOverlap:
+    input:
+        uwcalls="bn_overlap.uw.bed.filt.{op}.bed",
+        mssmcalls="bn_overlap.mssm.bed.filt.{op}.bed"        
+    output:
+        optSvCalls="opt_bn_overlap.bed.filt.{op}.bed"
+    params:
+        sge_opts=config["sge_small"],
+        sd=SNAKEMAKE_DIR,
+        maxRatio=config["maxRatio"]
+    shell:"""
+{params.sd}/CombineBNAnnotatedFiles.py {input.uwcalls} uw {input.mssmcalls} mssm {params.maxRatio} {wildcards.op} > {output.optSvCalls}
+"""
+
+
+rule SelectBestBNOverlap:
+    input:
+        svCalls="{source}.bed.filt.{op}.bed",
+        optCalls="opt_bn_overlap.bed.filt.{op}.bed"
+    output:
+        svFilt="bn_filt.{source}.{op}.bed"
+    params:
+        sge_opts=config["sge_small"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+{params.sd}/SelectBNSupportedCalls.py --svcalls {input.svCalls} --bntable {input.optCalls} --source {wildcards.source} --out {output.svFilt}
+"""
+
+rule SummarizeBestBNOverlap:
+    input:
+        optCalls="opt_bn_overlap.bed.filt.{op}.bed"
+    output:
+        optSummary="opt_bn_overlap.bed.filt.{op}.bed.summary"
+    params:
+        sge_opts=config["sge_small"],
+        sd=SNAKEMAKE_DIR,
+        sample=config["sample"]
+    shell:"""
+mspac=`cat {input.optCalls} | bioawk -c hdr '{{ if ($opSource == "mssm" ) print $bnsvlen; }}' | {params.sd}/stats.py --noround --noheader`
+phasedsv=`cat {input.optCalls} | bioawk -c hdr '{{ if ($opSource == "uw" ) print $bnsvlen; }}' | {params.sd}/stats.py --noround --noheader`
+echo {params.sample} "mspac" {wildcards.op} $mspac | tr " " "\\t" > {output.optSummary}
+echo {params.sample} "phasedsv" {wildcards.op} $phasedsv | tr " " "\\t" >> {output.optSummary}
+"""
+
+    
+otherSource = { "mssm": "uw", "uw" : "mssm" }
+
+
+
+rule MakeSVTRRegions:
+    input:
+        clust="sv_calls.clust"
+    output:
+        wide="sv_calls.clust.wide"
+    params:
+        sge_opts=config["sge_small"],
+        ref=config["ref"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+cat {input.clust} | awk '{{ if ($4 > 3) print;}}' | \
+  bedtools intersect -loj -a stdin -b {params.sd}/../regions/tandem_repeats.bed  | \
+  bedtools groupby -g 1-3 -c 6,7 -o min,max -full | \
+  awk '{{ print $1"\\t"$9"\\t"$10; }}' | \
+  grep -v "\-1" | \
+  bedtools slop -i stdin -g {params.ref}.fai -b 2000 > {output.wide}
+"""
+
+
+rule MakeSVTRClustersAnnot:
+    input:
+        clust="sv_calls.bed"
+    output:
+        tr="sv_calls.clust.tr.annot"
+    params:
+        sge_opts=config["sge_small"],
+        ref=config["ref"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+bedtools intersect -a {input.clust} -b {params.sd}/../regions/tandem_repeats_strs_slop.bed  -loj | bedtools groupby -g 1-3 -c 4 -o first -full > {output.tr}
+
+"""
+
+rule MakeSVTRClusters:
+    input:
+        clust="sv_calls.clust"
+    output:
+        tr="sv_calls.clust.tr"
+    params:
+        sge_opts=config["sge_small"],
+        ref=config["ref"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+cat {input.clust} | wc -l > {output.tr}
+bedtools intersect -a {input.clust} -b {params.sd}/../regions/tandem_repeats_strs_slop.bed -u | wc -l >> {output.tr}
+"""
+
+rule MakeSVTRClustersBG:
+    input:
+        clust="sv_calls.clust"
+    output:
+        tr="sv_calls.clust.tr.bg"
+    params:
+        sge_opts=config["sge_small"],
+        ref=config["ref"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+
+for i in `seq 1 100`; do
+bedtools shuffle -i {input.clust} -g {params.ref}.fai -incl {params.sd}/../regions/Regions.Called.bed | \
+  bedtools sort | \
+  bedtools merge | \
+  bedtools intersect -a stdin -b {params.sd}/../regions/tandem_repeats.bed -u | wc -l >> {output.tr}
+done
+    
+"""
+    
+    
+        
+rule MakeSVIntv:
+    input:
+        sv="sv_calls.bed",
+    output:
+        intv="sv_calls.intv"
+    params:
+        sge_opts=config["sge_small"],
+        ref=config["ref"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+cat {input.sv} | awk '{{ if ($5 == "insertion") {{ $3=$2+1;}} print;}}' | tr " " "\\t" | cut -f 1-6 > {output.intv}
+"""
+
+rule MakeSVClust:
+    input:
+        intv="sv_calls.intv"
+    output:
+        clust="sv_calls.clust"
+    params:
+        sge_opts=config["sge_small"],
+        ref=config["ref"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+bedtools merge -header -i {input.intv} -d 1000 -c 3 -o count | awk '{{ if ($NF > 1) print;}}' > {output.clust}
+"""    
+
+    
+
+rule CombineAnnotatedFixedDeletions:
+    input:
+        svinsann="fix_del/insertion/insertions.annotated.bed",
+        svdelann="fix_del/deletion/deletions.annotated.bed",
+    output:
+        svfixann="fix_del/sv_calls.ann.bed",
+        svfixvcf="fix_del/sv_calls.ann.vcf",
+    params:
+        sd=SNAKEMAKE_DIR,
+        sge_opts=config["sge_small"],
+        ref=config["ref"],
+    shell:"""
+head -1 {input.svdelann} > {output.svfixann}
+cat {input.svdelann} {input.svinsann} | bedtools sort >> {output.svfixann}
+{params.sd}/../sv/utils/variants_bed_to_vcf.py --bed {output.svfixann} --vcf {output.svfixvcf} --type sv --addci 5 --fields NALT nAlt NREF nRef SVANN svAnn SVREP svRep SVCLASS svClass NTR nTR BN bnKey SOURCE source --source PHASED-SV --info \"##INFO=<ID=NALT,Number=1,Type=Integer,Description=\\\"Number of reads supporting variant\\\">" "##INFO=<ID=NREF,Number=1,Type=Integer,Description=\\\"Number of reads supporting reference\\\">" "##INFO=<ID=SVANN,Number=1,Type=String,Description=\\\"Repeat annotation of variant\\\">" "##INFO=<ID=SVREP,Number=1,Type=Float,Description=\\\"Fraction of SV annotated as mobile element or tandem repeat\\\">"  "##INFO=<ID=SVCLASS,Number=1,Type=String,Description=\\\"General repeat class of variant\\\">"  "##INFO=<ID=NTR,Number=1,Type=Integer,Description=\\\"Number of tandem repeat bases\\\">"  "##INFO=<ID=BN,Number=1,Type=Float,Description=\\\"Overlap with BioNanoGenomics call.\\\">"  "##INFO=<ID=SOURCE,Number=1,Type=String,Description=\\\"Source method of call, with additional information describing haplotype.\\\">" --reference {params.ref}
+"""
+    
+    
+rule SummarizeExons:
+    input:
+        sv="sv_calls.bed",
+    output:
+        exons=config["sample"] + ".exons.{op}.bed",
+    params:
+        sge_opts=config["sge_small"],
+        exonFile=config["exons"]
+    shell:"""
+geneHeader=`head -1 {params.exonFile}`
+egrep "^#|{wildcards.op}" {input.sv} | \
+  bioawk -c hdr '{{ if (substr($0,0,1) == "#") \
+                   {{ print;}} \
+                   else {{ if ($svType == "insertion") {{ $3=$2+1;}} print;}} }}' | \
+  tr " " "\\t" | \
+  bedtools intersect -header -a stdin -b {params.exonFile} -loj | \
+  bedtools groupby -g 1-4 -c 4 -o first -full | \
+  awk -v hdr="$header" '{{ if (substr($0,0,1) == "#") print $0"\\t"hdr; }}' > {output.exons}
+"""
+    
+
+rule MakeMSSMBNAnnotation:
+    input:
+        mssm="{base}.sorted",
+        bionano=config["bionano"]
+    output:
+        mssmBN="{base}.uw.bed.bn"
+    params:
+        sge_opts=config["sge_small"],
+        maxRatio=config["maxRatio"]
+    shell:
+        "~/projects/HGSVG/hgsvg/sv/utils/AnnotateBedWithBioNano.py --bionano {input.bionano} --table {input.mssm} --out {output.mssmBN} --source MSSM --maxRatio {params.maxRatio}"
+
+    
+rule MakeUWAnnotation:
+    input:
+        uw=config["uwsv"],
+        bionano=config["bionano"]
+    output:
+        uwBN="uw.bed.bn"
+    params:
+        sge_opts=config["sge_small"],
+        maxRatio=config["maxRatio"]
+    shell:
+        "~/projects/HGSVG/hgsvg/sv/utils/AnnotateBedWithBioNano.py --bionano {input.bionano} --table {input.uw} --out {output.uwBN} --source UW --maxRatio {params.maxRatio}"
+
+
+rule MakeMSSMDistanceReport:
+    input:
+        mssm="mssm.bed.filt",
+        uw="uw.bed.filt"
+    output:
+        distreport="mssm.bed.filt.distance_report"
+    params:
+        sge_opts=config["sge_small"],
+        ref=config["ref"],
+    shell:"""
+nfm=`head -1 {input.mssm} | awk '{{ print NF;}}'`
+nfu=`head -1 {input.uw} | awk '{{ print NF;}}'`
+nft=$(($nfm+nfu+1))
+nelem=`grep -v "^#" {input.mssm} | wc -l`
+i=0;
+rm -f mssm.shuff;
+cut -f 1-3 {input.mssm} > mssm.shuff.bed
+nshuff=$(($nfu+4))
+while [ $i -lt 10000 ]; do
+   bedtools shuffle -i mssm.shuff.bed -g {params.ref}.fai | \
+   bedtools sort | \
+   bedtools closest -t first -d -a stdin -b {input.uw} | cut -f $nshuff | awk '{{ if ($1 < 1000) print;}}' | wc -l >> mssm.shuff;
+   i=$(($i+1))
+done
+   
+nclose=`bedtools closest -t first -d -a {input.mssm} -b {input.uw} | cut -f $nft | awk '{{ if ($1 < 1000) print;}}' | wc -l`
+echo -e $nelem"\\t"$nclose > {output.distreport}
+"""
+    
 
 rule FilterUWCalls:
     input:
@@ -1089,9 +1067,10 @@ rule AnnotateMSSMDistance:
     params:
         sge_opts=config["sge_small"]
     shell:"""
-echo "distToUW" > {output.svAnnot}
 cat {input.uw[0]} {input.uw[1]} | bedtools sort > {input.uw[0]}.combined
-bedtools closest -a {input.mssm} -b {input.uw[0]}.combined -d | awk '{{ print $NF;}}'>> {output.svAnnot}
+bedtools closest -t first -a {input.mssm} -b {input.uw[0]}.combined -d | \
+    bedtools groupby -header -g 1-6 -c 4 -o first -full | \
+    awk '{{ if (NR==1) {{ print "distToUW";}} else {{print $(NF-1);}} }}'> {output.svAnnot}
 """
 
 
@@ -1107,7 +1086,7 @@ rule AnnotateUWDistance:
     shell:"""
 echo "distToMSSM" > {output.svAnnot}
 {{ {SNAKEMAKE_DIR}/../sv/utils/HeaderMod.py --source {input.uw} {input.mssm} --index --append distToMSSM ; \
- bedtools closest -header -a {input.uw} -b {input.mssm} -d | bedtools groupby -c 4 -o first -full; }} | bioawk -c hdr '{{ print $distToMSSM;}}' | tail -n +3 >> {output.svAnnot}
+ bedtools closest -t first -header -a {input.uw} -b {input.mssm} -d | bedtools groupby -c 4 -o first -full; }} | bioawk -c hdr '{{ print $distToMSSM;}}' | tail -n +3 >> {output.svAnnot}
 """
 
 # Merging rules
@@ -1277,9 +1256,37 @@ rule AddMSSMSource:
 paste {output.svMSSMSource}.tmp {input.clusteredSVs} > {output.svMSSMSource}
 rm -f {output.svMSSMSource}.tmp
 """
+
+rule FixDelsInSVCalls:
+    input:
+        sv="sv_calls.bed",
+    output:
+        svdel="sv_calls.bed.fixed",
+    params:
+        sge_opts=config["sge_small"],
+        ref=config["ref"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+{params.sd}/FixDeletionCall.py --svbed {input.sv} --out {output.svdel} --ref {params.ref}
+"""
+
+rule AnnotateGapBed:
+    input:
+        svCalls="sv_calls.bed.fixed"
+    output:
+        annot="sv_calls.bed.annotated"
+    params:
+        sge_opts=config["sge_quad"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+make -f {params.sd}/../sv/utils/AnnotateGapBed.mak GAPS={input.svCalls}
+mv {input.svCalls}.annotated {output.annot}
+"""
+
+    
 rule AddTRFIntersect:
     input:
-        svBase="sv_calls.base.bed"
+        svBase="sv_calls.bed.annotated"
     output:
         trf="in_trf.tab"
     params:
@@ -1290,25 +1297,28 @@ rule AddTRFIntersect:
 nf1=`head -1 {input.svBase} | awk '{{ print NF;}}'`
 nf2=$(($nf1+1))
 echo "is_trf" > {output.trf}
-cat {input.svBase} | {params.sd}/../sv/utils/LeftJustify.py | bedtools intersect -a stdin -b {params.trf} -loj | \
-bedtools groupby -g 1-5 -c 5 -o first -full | cut -f $nf2 | awk '{{ if ($1 != ".") {{ print "TR"; }} else {{ print ".";}}  }}' >> {output.trf}
+cat {input.svBase} | {params.sd}/../sv/utils/ToPoint.sh | bedtools intersect -a stdin -b {params.trf} -f 0.9 -loj | \
+bedtools groupby -g 1-6 -c 5 -o first -full | cut -f $nf2 | awk '{{ if ($1 != ".") {{ print "TR"; }} else {{ print ".";}}  }}' >> {output.trf}
 """
 
-rule MakeAnnotatedBed:
+rule FixTRAnnotations:
     input:
-        baseBed="sv_calls.base.bed",
-        trf="in_trf.tab"
+        annot="sv_calls.bed.annotated",
+        trf="in_trf.tab"        
     output:
-        svCalls="sv_calls.bed"
+        fix="sv_calls.bed.annotated.tr_fixed"
     params:
         sge_opts=config["sge_small"],
-    shell:"paste {input.baseBed} {input.trf} > {output.svCalls} "
+    shell:"""
+paste {input.annot} {input.trf} | bioawk -c hdr '{{ if ($is_trf == "TR" && $svAnn == "NONE") {{ $svAnn = "TandemRepeat";}} print;}}' | tr " " "\t" > {output.fix}        
+
+"""
 
 rule MakeAlt:
     input:
-        svCalls="sv_calls.bed.trf"
+        svCalls="sv_calls.bed.annotated"
     output:
-        svCallsAlt="sv_calls.bed.trf.alt"
+        svCallsAlt="sv_calls.bed.annotated.alt"
     params:
         sge_opts=config["sge_small"],
         sd=SNAKEMAKE_DIR,
@@ -1318,9 +1328,26 @@ rule MakeAlt:
 {params.sd}/RelabelGenotype.py --bed {input.svCalls} --out {output.svCallsAlt}
 """
 
+rule AddSVQCLoci:
+    input:
+        svcalls="sv_calls.bed.annotated.tr_fixed",
+        loci="../SVQC/tr_clusters.calls.bed"
+    output:
+        comb="sv_calls.bed.annotated.tr_fixed.loci"
+    params:
+        sge_opts=config["sge_small"],
+        ref=config["ref"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+{params.sd}/../sv/utils/MergeFiles.py --files {input.svcalls} {input.loci} --out {output.comb}
+cat {output.comb} | bioawk -c hdr '{{ if ($svType == "locus") {{ $svAnn = "locus";}} print;}}' | tr " " "\t" > {output.comb}.relabeled
+mv -f {output.comb}.relabeled {output.comb}
+"""    
+        
+
 rule CombineMergedToVCF:
     input:
-        svCalls="sv_calls.bed.trf.alt"
+        svCalls="sv_calls.bed.annotated.tr_fixed.loci"
     output:
         mergedVCF="sv_calls.vcf",
         mergedVCFgz=config["sample"]+".sv_calls.vcf.gz",
@@ -1329,8 +1356,6 @@ rule CombineMergedToVCF:
         ref=config["ref"],
         sample=config["sample"]
     shell:"""
-module load numpy/1.11.0    
-module load pandas/0.18.1
 
 {SNAKEMAKE_DIR}/../sv/utils/variants_bed_to_vcf.py --bed {input.svCalls} --reference {params.ref} --vcf /dev/stdout  --sample {params.sample} --type sv --addci 5 --fields NALT nAlt NREF nRef SVANN svAnn SVREP svRep SVCLASS svClass NTR nTR BN bnKey SOURCE source --source PHASED-SV --info \"##INFO=<ID=NALT,Number=1,Type=Integer,Description=\\\"Number of reads supporting variant\\\">" "##INFO=<ID=NREF,Number=1,Type=Integer,Description=\\\"Number of reads supporting reference\\\">" "##INFO=<ID=SVANN,Number=1,Type=String,Description=\\\"Repeat annotation of variant\\\">" "##INFO=<ID=SVREP,Number=1,Type=Float,Description=\\\"Fraction of SV annotated as mobile element or tandem repeat\\\">"  "##INFO=<ID=SVCLASS,Number=1,Type=String,Description=\\\"General repeat class of variant\\\">"  "##INFO=<ID=NTR,Number=1,Type=Integer,Description=\\\"Number of tandem repeat bases\\\">"  "##INFO=<ID=BN,Number=1,Type=Float,Description=\\\"Overlap with BioNanoGenomics call.\\\">"  "##INFO=<ID=SOURCE,Number=1,Type=String,Description=\\\"Source method of call, with additional information describing haplotype.\\\">" | bedtools sort -header > {output.mergedVCF}
 
@@ -1349,9 +1374,6 @@ rule CombineMergedToTracks:
         ref=config["ref"],
         sample=config["sample"]
     shell:"""
-module load numpy/1.11.0    
-module load pandas
-
 cat merged.del.bed | bioawk -c hdr 'BEGIN{{colors["HOM"]="255,0,0"; colors["HAP1"]="0,255,0"; colors["HAP0"]="0,0,255"; OFS="\\t";}} {{ print $_chrom, $tStart, $tEnd, $source, 1000, "+", $tStart, $tEnd, colors[$hap];}}' | grep -v "^#" | bedtools sort | {SNAKEMAKE_DIR}/../sv/utils/FixCoordinates.py /dev/stdin /dev/stdout {params.ref}.fai > {params.sample}.del.bed9
 bedToBigBed {params.sample}.del.bed9 {params.ref}.fai {params.sample}.del.bb -type=bed9
 
@@ -1372,7 +1394,7 @@ rule MakeInversions:
         ref=config["ref"],
         sample=config["sample"]
     shell:"""
-module load samtools/latest
+
 mkdir -p {config.alnDir}
 samtools view {input.aln} | {params.pbs}/Inversions/screenInversions /dev/stdin {parmas.ref} {output.inv} -w 10000 -r --noClip -j 12
 """
@@ -1410,7 +1432,7 @@ def GetParentBams(w):
     
 rule GenotypeParents:
     input:
-        svs="sv_calls.bed",
+        svs="sv_calls.bed.annotated",
         bams=lambda wildcards: GetParentBams(wildcards.pa)
     output:
         parent="parent.cov.{pa}.bed"
@@ -1421,7 +1443,6 @@ rule GenotypeParents:
         moBam=config["moBams"],
         sd=SNAKEMAKE_DIR
     shell:"""
-module unload anaconda; module load python/2.7.3;
 
 {SNAKEMAKE_DIR}/../sv/utils/SpliceVariantsAndCoverageValidate.py --gaps {input.svs} --reads {input.bams} --out {output.parent} --nproc 12 --ref {params.ref} --separate-haplotypes  --blasr {params.sd}/../blasr/alignment/bin/blasr 
 perl -pi -e "s/#region/region_{wildcards.pa}/g" {output.parent}
@@ -1429,37 +1450,20 @@ perl -pi -e "s/nAlt/nAlt_{wildcards.pa}/g" {output.parent}
 perl -pi -e "s/nRef/nRef_{wildcards.pa}/g" {output.parent}
     
 """
-#{params.sd}/../blasr/alignment/bin/blasr 
-rule MakeInheritanceTable:
-    input:
-        parents=expand("parent.cov.{pa}.bed",pa=parents),
-        svcalls="sv_calls.bed"
-    output:
-        inh="inheritance.bed"
-    params:
-        sge_opts="-pe serial 1 -l mfree=1G -l h_rt=01:00:00"
-    shell:"""
-bioawk -c hdr '{{ print $nAlt"\\t"$nRef"\\t"$hap;}}' < {input.svcalls} > child.support
-paste {input.parents} child.support > {output.inh}
-"""
-
 
 rule MergeInheritance:
     input:
-        inh="inheritance.bed",
-        sv="sv_calls.bed",
-        trf="in_trf.tab"
+        parents=expand("parent.cov.{pa}.bed",pa=parents),        
+        sv="sv_calls.bed.annotated.tr_fixed",
     output:
-        merge="sv_calls.bed.trf"
+        merge="sv_calls.annotated.tr_fixed.parents",
     params:
         sge_opts="-pe serial 1 -l mfree=1G -l h_rt=01:00:00",
-    shell:"paste {input.sv} {input.inh} {input.trf} > {output.merge}"
+    shell:"paste {input.sv} {input.parents}  > {output.merge}"
 
 rule RenderGenotypes:
     input:
-        inh="inheritance.bed",
-        sv="sv_calls.bed",
-        trf="in_trf.tab"
+        merge="sv_calls.annotated.tr_fixed.parents",        
     output:
         plot=config["sample"]+".parental_coverage.pdf",
         plotnotrf=config["sample"]+".parental_coverage.no_trf.pdf"        
@@ -1469,14 +1473,13 @@ rule RenderGenotypes:
         pal=config["pal"],
         sd=SNAKEMAKE_DIR
     shell:"""
-paste {input.sv} {input.inh} {input.trf} > {input.sv}.trf
-module load R/latest;
-Rscript {params.sd}/../plotting/plot_inheritance.R --inh {input.sv}.trf --sample {params.sample} --pal {params.pal}
+
+Rscript {params.sd}/../plotting/plot_inheritance.R --inh {input.merge} --sample {params.sample} --pal {params.pal}
 """
 
 rule SummarizeInheritance:
     input:
-        svcalls="sv_calls.bed.trf",
+        svcalls="sv_calls.annotated.tr_fixed.parents",
     output:
         hethom="het_hom_summary.txt"
     params:
@@ -1508,20 +1511,23 @@ echo -e "#condition\\tnHom\\tnHet\\tratio\\thomTP\\thetFPHom\\thomFP\\thetTP\\th
 echo -e "all\\t$nHom\\t$nHet\\t$ratio\\t$nHomTP\\t$nHomShouldBeHet\\t$nHomFP\\t$nHetTP\\t$nHetFP\t$nNoCall" >> {output.hethom}
 echo -e "no-trf\\t$tnHom\\t$tnHet\\t$tratio\\t$tnHomTP\\t$tnHomShouldBeHet\\t$tnHomFP\\t$tnHetTP\\t$tnHetFP\t$tnNoCall" >> {output.hethom}        
 
-
-
 """
 
 rule MakeBNCompare:
     input:
         bnvcf=config["bnvcf"],
-        svcalls="sv_calls.bed"
+        svcalls="sv_calls.annotated.tr_fixed.parents",
     output:
-        bnCompare=["sv_calls.bed.ins.bn.bed", "sv_calls.bed.ins.bn.bed", "sv_calls.bed.by-pb.bn.bed"],
+        bnCompare=["sv_calls.bed.ins.bn.bed", "sv_calls.bed.del.bn.bed", "sv_calls.bed.by-pb.bn.bed"],
     params:
         sge_opts="-pe serial 8 -l mfree=1G -l h_rt=08:00:00",
-    shell:
-        "{SNAKEMAKE_DIR}/../sv/utils/IntersectBioNanoWithUW.sh {input.bnvcf} {input.svcalls}"
+    shell:"""
+{SNAKEMAKE_DIR}/../sv/utils/IntersectBioNanoWithUW.sh {input.bnvcf} {input.svcalls}
+
+mv sv_calls.annotated.tr_fixed.parents.ins.bn.bed sv_calls.bed.ins.bn.bed
+mv sv_calls.annotated.tr_fixed.parents.del.bn.bed sv_calls.bed.del.bn.bed
+mv sv_calls.annotated.tr_fixed.parents.by-pb.bn.bed sv_calls.bed.by-pb.bn.bed
+"""
 
 rule MakeBNPlots:
     input:
@@ -1531,29 +1537,6 @@ rule MakeBNPlots:
     params:
         sge_opts="-pe serial 8 -l mfree=1G -l h_rt=08:00:00",
         sample=config["sample"]
-    shell:
-        "module load R/latest; Rscript {SNAKEMAKE_DIR}/../plotting/plot_bionano.R --pbsv sv_calls.bed.by-pb.bn.bed --bndel sv_calls.bed.del.bn.bed --bnins sv_calls.bed.ins.bn.bed --sample {params.sample}"
-        
-
-rule SelectRandomSVs:
-    input:
-        svs="sv_calls.bed",
-    output:
-        randomSVs=expand("{sample}.sv_calls.random.bed", sample=config["sample"])
-    params:
-        sge_opts="-pe serial 1 -l mfree=1G -l h_rt=01:00:00",
     shell:"""
-cat sv_calls.bed | bioawk -c hdr  '{{ print $_chrom"\\t" $tStart"\\t" $tEnd"\\t" $svType "\\t"$svLen"\\t" NR-1;}}' | grep -v "#" |  shuf | head -1000 > {output.randomSVs}
+module load R/latest; Rscript {SNAKEMAKE_DIR}/../plotting/plot_bionano.R --pbsv sv_calls.bed.by-pb.bn.bed --bndel sv_calls.bed.del.bn.bed --bnins sv_calls.bed.ins.bn.bed --sample {params.sample}
 """
-
-rule SelectRandomClusters:
-    input:
-        svs="sv_calls.bed",
-    output:        
-        randomSVClusters=expand("{sample}.sv_calls.random.clusters.bed",sample=config["sample"])
-    params:
-        sge_opts="-pe serial 1 -l mfree=1G -l h_rt=01:00:00",
-    shell:"""
-~/projects/HGSVG/hgsvg/merging/SelectRandomClusters.py --bed sv_calls.bed --n 1000 --out {output.randomSVClusters}
-"""
-

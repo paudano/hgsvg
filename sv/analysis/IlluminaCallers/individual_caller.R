@@ -6,16 +6,16 @@ options <- matrix(c("sv", "v", 2, "character",
 
 args <- getopt(options)
                                         #
-#setwd("/net/eichler/vol24/projects/structural_variation/nobackups/projects/HGSVG/analysis/IlluminaCombined/NA19240")
-#args <- data.frame(sv="int_caller_full.DEL.bed",count="callers.DEL.tab", sample="NA19240", operation="DEL")
+#setwd("/net/eichler/vol24/projects/structural_variation/nobackups/projects/HGSVG/analysis/IlluminaCombined/HG00514")
+#args <- data.frame(sv="int_caller_full.INS.bed",count="callers.INS.tab", sample="HG00514", operation="INS")
 
-callTab <- read.table(as.character(args$sv),header=T,comment.char="")
+callTab   <- read.table(as.character(args$sv),header=T,comment.char="")
 callNames <- names(callTab)
 firstName <- which(callNames == "tEnd.1")[1]+1
-lastName <- which(callNames == "orth_filter.1")[1]-1
+lastName  <- which(callNames == "orth_filter.1")[1]-1
 
 countTab  <- read.table(as.character(args$count),header=T,comment.char="")
-nSamples <- lastName - firstName + 1
+nSamples  <- lastName - firstName + 1
 
 countNames <- names(countTab)
 firstCountName <- which(countNames == "tEnd")[1]+1
@@ -38,8 +38,8 @@ tabAllCounts <- sapply(tabNames, function(n) if (is.na(allCounts[n])) { return(0
 library(gdsfmt)
 library(ggrepel)
 
-
-colnames(tpca$x) <-  paste("c",seq(1,13),sep="")
+n <- length(colnames(tpca$x))
+colnames(tpca$x) <-  paste("c",seq(1,n),sep="")
 pcaDF <- as.data.frame(tpca$x)
 
 pcaSummary <- summary(tpca)

@@ -4,4 +4,4 @@ mcutils/src/samToBed:
 	cd mcutils/src && make
 
 blasr/alignment/bin/blasr:
-	cd blasr && make HDF5INCLUDEDIR=$(PWD)/../include HDF5LIBDIR=$(PWD)/../lib CPP="g++ -static -std=c++03 " -j 8
+	cd blasr && make HDF5INCLUDEDIR=$(abspath ../hdf5/build/include) HDF5LIBDIR=$(abspath ../hdf5/build/lib/libhdf5) CPP="g++ -static -std=c++03 " -j 8

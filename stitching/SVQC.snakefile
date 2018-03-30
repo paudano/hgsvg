@@ -18,6 +18,7 @@ rule all:
     input:
         stitching=expand("stitching_hap_gaps/hap{hap}/gaps.bed", hap=haps),
         sortedBed=expand("SVQC/hap{hap}/gaps.sorted",hap=haps),
+        orig_clusters=expand("SVQC/hap{hap}/gaps.sorted.window_clusters",hap=haps),
         bb=expand("SVQC/hap{hap}/{op}s.bb",hap=haps,op=["insertion","deletion"]),
         mergedRetained=expand("SVQC/hap{hap}/indels.svqc.bed",hap=haps),
         mergedBed="merged/sv_calls.bed",
@@ -512,6 +513,7 @@ rule CollectRetainedIndels:
     shell:
         "bedtools intersect -v -a {input.stitchIndels} -b {input.recalledRegions} > {output.retainedIndels} "
 
+
     
 rule SortGaps:
     input:
@@ -527,7 +529,21 @@ bedtools sort -header -i {input.stitching} | \
  bedtools groupby -header -g 1-5 -c 1 -o first -full | cut -f 1-$nf > {output.svqc}
 """
 
-
+rule CountGapClusters:
+    input:
+        svqc="SVQC/hap{hap}/gaps.sorted"
+    output:
+        orig_clusters="SVQC/hap{hap}/gaps.sorted.window_clusters"
+    params:
+        sge_opts="-cwd -pe serial 1 -l mfree=1G -l h_rt=04:00:00 -l disk_free=4G",
+        ref=config["ref"],        
+        sd=SNAKEMAKE_DIR,        
+    shell:"""
+cat {input.svqc} | {params.sd}/../sv/utils/ToPoint.sh | \
+ bedtools slop -b 250 -g {params.ref}.fai | \
+ bedtools sort | \
+ bedtools merge -c 2 -o count -i stdin | awk '{{ print $1"\\t"$2"\\t"$3"\\t"$NF;}}' > {output.orig_clusters}
+"""
 rule ConvertIndelBedToVCF:
     input:
         mergedRetained="SVQC/hap{hap}/indels.svqc.bed"
@@ -675,7 +691,7 @@ rule IndelBedToVCF:
         ref=config["ref"],
         sample=config["sample"]
     shell:"""
-module unload python; module load python/2.7.3; module load numpy/1.8.1; module load bedtools/latest; module load pandas/0.20.3 
+
 {SNAKEMAKE_DIR}/../sv/utils/variants_bed_to_vcf.py --bed {input.bed} --ref {params.ref} --sample {params.sample} --type indel --vcf /dev/stdout | bedtools sort -header > {output.vcf}
         bgzip -c {output.vcf} > {output.vcf}.gz
         tabix {output.vcf}.gz

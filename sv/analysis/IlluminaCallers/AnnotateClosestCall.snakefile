@@ -145,7 +145,7 @@ rule all:
         intvalbed=expand("int_filt_value.{svtype}.bed", svtype=svTypes),
         reverse=expand("intfinal_reverse.{svtype}.tab",svtype=svTypes),
         scoredSensTable=expand("SensitivitySpecificity.{sample}.{svtype}.{thresh}.scores.tsv",sample=config["sample"], svtype=svTypes,thresh=["2.1", "3.2","4.2"]),
-        pli=expand("{sample}.merged_nonredundant_exon.{svtype}.pli.tab",sample=config["sample"], svtype=svTypes)
+        pli=expand("{sample}.merged_nonredundant_exon_pli.{svtype}.tab",sample=config["sample"], svtype=svTypes)
         
         
         
@@ -1573,7 +1573,7 @@ rule AddPLI:
     input:
        bed="{sample}.merged_nonredundant_exon.{svtype}.bed",
     output:
-       pli="{sample}.merged_nonredundant_exon.{svtype}.pli.tab",
+       pli="{sample}.merged_nonredundant_exon_pli.{svtype}.tab",
     params:
         sge_opts="-pe serial 6 -l h_rt=2:00:00 -l mfree=8G",
         sd=SNAKEMAKE_DIR,
@@ -1603,6 +1603,7 @@ paste {input.bed} {output.rvis}.tab > {output.rvis}
 
 rule MakeFullExonTable:
     input:
+        pli="{sample}.merged_nonredundant_exon_pli.{svtype}.tab",    
         rvis="{sample}.merged_nonredundant_exon.{svtype}.bed.rvis.tab",
         bed="{sample}.merged_nonredundant_exon.{svtype}.bed",
         tr="{sample}.merged_nonredundant_exon.{svtype}.bed.tr",
@@ -1612,7 +1613,7 @@ rule MakeFullExonTable:
         sge_opts="-pe serial 6 -l h_rt=2:00:00 -l mfree=8G",
         sd=SNAKEMAKE_DIR,
     shell:"""
-paste {input.bed} {input.rvis} {input.tr} > {output.merged}
+paste {input.bed} {input.pli} {input.rvis} {input.tr} > {output.merged}
 """        
 
 rule GetTFBSAblation:

@@ -472,10 +472,8 @@ def SpliceTestLine(svs):
 
         tabixCommand = "tabix -h {} {}:{}-{}".format(args.genotypeVcf, sv.chrom, vcfStart, vcfEnd)
         subprocess.call(tabixCommand.split(), stdout=regionVCF)
-        print tabixCommand
         regionVCF.close()        
         partitionCommand = "{}/partitionByPhasedSNVs --vcf {} --sam {} --rgn {}:{}-{} --pad 10000 --h1 {} --h2 {} --ref {} --minGenotyped 1 --sample {} --unassigned {}".format("/net/eichler/vol5/home/mchaisso/projects/pbgreedyphase", regionVCF.name, dipSamFile.name, sv.chrom, fetchStart, fetchEnd, hap0SamFile.name, hap1SamFile.name, args.ref, args.sample, unassignedSamFile.name )
-        print partitionCommand
         subprocess.call(partitionCommand.split())
 
         sams = [hap0SamFile.name, hap1SamFile.name, unassignedSamFile.name]
@@ -501,7 +499,7 @@ def SpliceTestLine(svs):
 #    rsFile  = tempfile.NamedTemporaryFile(dir=args.tmpdir, suffix=".sam", delete=False, mode='w')
     dbsFile = tempfile.NamedTemporaryFile(dir=args.tmpdir, suffix=sSuffix, delete=False, mode='w')
     
-    commandOptions = " -maxMatch 25 -sdpMaxAnchorsPerPosition 5 -sam -bestn 1 -affineOpen 5 -affineExtend 5 -minAlignLength {} ".format(int(1.5*args.flank))
+    commandOptions = " -maxMatch 25 -sdpMaxAnchorsPerPosition 5 -sdpTupleSize 10 -sam -bestn 1 -affineOpen 5 -affineExtend 5 -minAlignLength {} ".format(int(1.5*args.flank))
 
     dbCommand = "{} {} {} -preserveReadTitle -clipping soft ".format(args.blasr, readsFile.name, dbFile.name, dbsFile.name) + commandOptions
     tempFileNames.append(dbsFile.name)

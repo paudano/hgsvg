@@ -42,12 +42,15 @@ longOps=["deletion","insertion"]
 shortOps=["del","ins"]
 filtered=["uw.bed.filt", "mssm.bed.filt"]
 #shortOpToBnOp = { "del": "DEL", "ins" : "INS" }
+shortToLong= { "del" : "deletion", "ins" : "insertion" }
+
 gapdir=config["gapdir"]
 rule all:
     input:
         mssmLocal  = expand("local.{mssm}", mssm=allMSSMBase.values()),
         mssmUW     = expand("{mssm}.uw",mssm=allMSSMBase.values()),
         mssmSort   = expand("{mssm}.sorted",mssm=allMSSMBase.values()),
+        mssmSortClusters   = expand("{mssm}.sorted.window_clusters",mssm=allMSSMBase.values()),        
         mssmBnSupport=expand("bn_support.{mssm}.tab",mssm=allMSSMBase.values()),
         mssmBPSupport=expand("{mssm}.uw.cov",mssm=allMSSMBase.values()),
         mssmToUWFilt = expand("{mssm}.uw.bed.filt",mssm=allMSSMBase.values()),
@@ -59,8 +62,9 @@ rule all:
         svFilt=expand("bn_filt.{source}.{op}.bed",source=sources, op=shortOps),
         optSvCalls=expand("opt_bn_overlap.bed.filt.{op}.bed",op=shortOps),
         uwBNAnnotation = "uw.bed.bn",
-        mergedMSSM = "mssm.bed.filt",
+        mergedMSSM = "mssm.bed.filt",        
         uwFilt="uw.bed.filt",
+        simpleReciprocal=expand("recirpocal.{op}.bed",op=shortOps),
         svbb=expand("{source}.{op}.bb", source=sources, op=longOps),
         svs=expand("{filt}.{op}.bed", filt=filtered,op=shortOps),
         svsbn=expand("{filt}.{op}.bed.bn", filt=filtered,op=shortOps),
@@ -72,7 +76,7 @@ rule all:
         mergedPreInvBed="sv_calls.pre-inv.bed",
         clusterCount=[config["uwsv"]+".cluster-count"] + expand("{mssm}.uw.cluster-count",mssm=allMSSMBase.values()),
         clusterSummary="cluster-summary.txt",
-        mergedBed="sv_calls.bed",
+#        mergedBed="sv_calls.bed",
         annotatedMergedBed="sv_calls.bed.annotated",
         annotatedMergedBedFixed="sv_calls.bed.annotated.tr_fixed",        
         mergedBedWithLoci="sv_calls.bed.annotated.tr_fixed.loci",
@@ -102,12 +106,12 @@ rule all:
 #        distreport="mssm.bed.filt.distance_report",
         optSummary=expand("opt_bn_overlap.bed.filt.{op}.bed.summary",op=shortOps),
         exons=expand("{sample}.exons.{op}.bed",sample=config["sample"],op=longOps),
-        sv_intv="sv_calls.intv",
-        sv_clust="sv_calls.clust",
-        sv_tr="sv_calls.clust.tr",
-        sv_tr_annot="sv_calls.clust.tr.annot",
-        sv_tr_bg="sv_calls.clust.tr.bg",        
-        wide="sv_calls.clust.wide",
+#        sv_intv="sv_calls.intv",
+#        sv_clust="sv_calls.clust",
+#        sv_tr="sv_calls.clust.tr",
+#        sv_tr_annot="sv_calls.clust.tr.annot",
+#        sv_tr_bg="sv_calls.clust.tr.bg",        
+#        wide="sv_calls.clust.wide",
         comb=expand("{mssm}.hap{hap}.bed.uw.bed.filt.comb",mssm=config["sample"],hap=mssmHaps),        
         trNet=expand(gapdir+"/hap{hap}/tr_net.tab",hap=mssmHaps),
         trZyg=expand(gapdir+"/hap{hap}/tr_net.tab.zyg",hap=mssmHaps),
@@ -141,7 +145,25 @@ rule MakeBNCalls:
 zcat {input.bnvcf} | {params.sd}/../sv/utils/variants_vcf_to_bed.py --vcf /dev/stdin --out {output.bncalls}.tmp --bionano
 cat {output.bncalls}.tmp | bioawk -c hdr '{{ if (substr($0,0,1) == "#" || ($svLen >=50 && $svLen < 6000000)) print; }}' > {output.bncalls}
 """
+rule MakeSimpleRecirocal:
+    input:
+        mssm = "mssm.bed.filt",        
+        uw   = "uw.bed.filt",
+    output:
+        simpleReciprocal=expand("recirpocal.{op}.bed",op=shortOps),
+    params:
+        sge_opts=config["sge_small"],
+    shell:"""
+bedtools intersect -header -f 0.5 -r \
+  -a <( cat {input.mssm} | awk '{{ if (NR==1 || $svType == "deletion") print}}') \
+  -b <( cat {input.uw} | awk '{{ if (NR==1 || $svType == "deletion") print}}') -u | wc -l | awk '{{ print $1;}}' > recirpocal.del.bed
 
+bedtools intersect -header -f 0.5 -r \
+  -a <( cat {input.mssm} | awk '{{ if (NR==1 || $svType == "insertion") print}}') \
+  -b <( cat {input.uw} | awk '{{ if (NR==1 || $svType == "insertion") print}}') -u | wc -l | awk '{{ print $1;}}' > recirpocal.ins.bed  
+"""
+
+    
 rule SeparateBNCalls:
     input:
         bncalls="calls_bn.bed"
@@ -212,6 +234,24 @@ nf=`head -1 {input.mssm} | awk '{{ print NF;}}'`
 module unload anaconda; module unload python/3.5.2; module load python/2.7.3; module load bedtools/2.25.0; bedtools sort -header -i {input.mssm} | awk '{{ if (substr($0,0,1) == "#" || ($3-$2 >= 50 && $3-$2 < 500000)) print;}}' | bedtools groupby -g 1-3 -c 4 -o first -full -header | cut -f 1-$nf > {output.mssmSorted}
 """
 
+
+rule AnnotateMSSMClusters:
+    input:
+        sorted="{mssm}.sorted"
+    output:
+        mssmClust="{mssm}.sorted.window_clusters"
+    params:
+        sge_opts="-cwd -pe serial 1 -l mfree=1G -l h_rt=04:00:00 -l disk_free=4G",
+        ref=config["ref"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+cat {input.sorted} | {params.sd}/../sv/utils/ToPoint.sh | \
+ bedtools slop -b 250 -g {params.ref}.fai | \
+ bedtools sort | \
+ bedtools merge -c 2 -o count -i stdin | awk '{{ print $1"\\t"$2"\\t"$3"\\t"$NF;}}' > {output.mssmClust}
+
+"""
+        
 ################################################################################
 ##
 ## Add external support for SV calls: BioNano overlap and raw read support
@@ -673,102 +713,7 @@ otherSource = { "mssm": "uw", "uw" : "mssm" }
 
 
 
-rule MakeSVTRRegions:
-    input:
-        clust="sv_calls.clust"
-    output:
-        wide="sv_calls.clust.wide"
-    params:
-        sge_opts=config["sge_small"],
-        ref=config["ref"],
-        sd=SNAKEMAKE_DIR,
-    shell:"""
-cat {input.clust} | awk '{{ if ($4 > 3) print;}}' | \
-  bedtools intersect -loj -a stdin -b {params.sd}/../regions/tandem_repeats.bed  | \
-  bedtools groupby -g 1-3 -c 6,7 -o min,max -full | \
-  awk '{{ print $1"\\t"$9"\\t"$10; }}' | \
-  grep -v "\-1" | \
-  bedtools slop -i stdin -g {params.ref}.fai -b 2000 > {output.wide}
-"""
-
-
-rule MakeSVTRClustersAnnot:
-    input:
-        clust="sv_calls.bed"
-    output:
-        tr="sv_calls.clust.tr.annot"
-    params:
-        sge_opts=config["sge_small"],
-        ref=config["ref"],
-        sd=SNAKEMAKE_DIR,
-    shell:"""
-bedtools intersect -a {input.clust} -b {params.sd}/../regions/tandem_repeats_strs_slop.bed  -loj | bedtools groupby -g 1-3 -c 4 -o first -full > {output.tr}
-
-"""
-
-rule MakeSVTRClusters:
-    input:
-        clust="sv_calls.clust"
-    output:
-        tr="sv_calls.clust.tr"
-    params:
-        sge_opts=config["sge_small"],
-        ref=config["ref"],
-        sd=SNAKEMAKE_DIR,
-    shell:"""
-cat {input.clust} | wc -l > {output.tr}
-bedtools intersect -a {input.clust} -b {params.sd}/../regions/tandem_repeats_strs_slop.bed -u | wc -l >> {output.tr}
-"""
-
-rule MakeSVTRClustersBG:
-    input:
-        clust="sv_calls.clust"
-    output:
-        tr="sv_calls.clust.tr.bg"
-    params:
-        sge_opts=config["sge_small"],
-        ref=config["ref"],
-        sd=SNAKEMAKE_DIR,
-    shell:"""
-
-for i in `seq 1 100`; do
-bedtools shuffle -i {input.clust} -g {params.ref}.fai -incl {params.sd}/../regions/Regions.Called.bed | \
-  bedtools sort | \
-  bedtools merge | \
-  bedtools intersect -a stdin -b {params.sd}/../regions/tandem_repeats.bed -u | wc -l >> {output.tr}
-done
-    
-"""
-    
-    
-        
-rule MakeSVIntv:
-    input:
-        sv="sv_calls.bed",
-    output:
-        intv="sv_calls.intv"
-    params:
-        sge_opts=config["sge_small"],
-        ref=config["ref"],
-        sd=SNAKEMAKE_DIR,
-    shell:"""
-cat {input.sv} | awk '{{ if ($5 == "insertion") {{ $3=$2+1;}} print;}}' | tr " " "\\t" | cut -f 1-6 > {output.intv}
-"""
-
-rule MakeSVClust:
-    input:
-        intv="sv_calls.intv"
-    output:
-        clust="sv_calls.clust"
-    params:
-        sge_opts=config["sge_small"],
-        ref=config["ref"],
-        sd=SNAKEMAKE_DIR,
-    shell:"""
-bedtools merge -header -i {input.intv} -d 1000 -c 3 -o count | awk '{{ if ($NF > 1) print;}}' > {output.clust}
-"""    
-
-    
+   
 
 rule CombineAnnotatedFixedDeletions:
     input:
@@ -1069,8 +1014,7 @@ rule AnnotateMSSMDistance:
     shell:"""
 cat {input.uw[0]} {input.uw[1]} | bedtools sort > {input.uw[0]}.combined
 bedtools closest -t first -a {input.mssm} -b {input.uw[0]}.combined -d | \
-    bedtools groupby -header -g 1-6 -c 4 -o first -full | \
-    awk '{{ if (NR==1) {{ print "distToUW";}} else {{print $(NF-1);}} }}'> {output.svAnnot}
+    awk '{{ if (NR==1) {{ print "distToUW";}} print $NF; }}'> {output.svAnnot}
 """
 
 

@@ -18,6 +18,7 @@ prevRgn=None
 nSup = 0
 prevVals = None
 sys.stdout.write("\t".join(hv[3:9] + ["locsup"]) + "\n")
+observedLocalAssemblies={}
 for line in isect:
 
     vals = line.split()
@@ -27,11 +28,14 @@ for line in isect:
             indel = "\t".join(prevVals[3:9]) + "\t" + str(nSup)
             sys.stdout.write(indel + "\n")
         nSup = 0
+        observedLocalAssemblies = {}
     #if rgn == prevRgn:
     svLen = int(vals[h["svLen"]])
     qsvLen = int(vals[h["qsvlen"]])
-    if svLen > 0.5*qsvLen and svLen < 2.0*qsvLen:
+#    print(str(observedLocalAssemblies)+"\n")
+    if svLen > 0.5*qsvLen and svLen < 2.0*qsvLen and vals[h["qsvasm"]] not in observedLocalAssemblies:
         nSup +=1
+    observedLocalAssemblies[vals[h["qsvasm"]]] = True
 
     prevRgn = rgn
     prevVals = vals

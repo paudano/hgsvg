@@ -67,7 +67,7 @@ rule ApplyPolish:
         polish="{sample}.{hap}.polish.fasta",
     params:
         sge_opts="-pe serial 1 -l h_rt=1:00:00 -l mfree=8G",
-        sd=SNAKEMAKE_DIR
+        sd=SD
     shell:"""
 {params.sd}/ApplyVCFPatch.py --genome {input.assembly} --vcf {input.vcf} --out {output.polish}
 """

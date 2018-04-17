@@ -62,11 +62,34 @@ def GetAltSeq(row, genome):
         refPrefix = genome.fetch(row["#chrom"], row["origTStart"]-1, row["origTStart"]).upper()        
         return refPrefix
 
-def GetSVLen(row):
-    if row["svType"] == "deletion":
-        return -1*row["svLen"]
+def ParseSVLen(val):
+    if str(val).find(",") != -1:
+        return [int(i) for i in val.split(",")]
     else:
-        return row["svLen"]
+        try:
+            i=abs(int(val))
+        except:
+            import pdb
+            pdb.set_trace()
+            print val
+            
+        return abs(int(val))
+    
+def GetSVLen(row):
+    retval= None
+
+    if row["svType"] == "locus":
+        retval = row["svLen"]
+    elif row["svType"] == "deletion":
+        retval = -1*int(row["svLen"])
+    else:
+        retval = row["svLen"]
+
+    if retval is None or retval == "":
+        import pdb
+        pdb.set_trace()
+        print row["svType"]
+    return retval
 
 def GetRefSeq(row, genome, oneBase=False):
     refLen = 1;
@@ -74,6 +97,8 @@ def GetRefSeq(row, genome, oneBase=False):
     if row["svType"] == "deletion":
         if oneBase == False:
             refLen = row["svLen"] + 1
+    elif row["svType"] == "locus":
+        refLen =  row["tEnd"] - refPos
         # deletion sequence starts at base before del event
     refPos-=1
 
@@ -155,7 +180,9 @@ def convert_bed_to_vcf(bed_filename, reference_filename, vcf_filename, sample, v
             ),
             axis=1
         )
-        calls["svLen"] = calls.apply(lambda row: abs(row["svLen"]), axis=1)
+#        import pdb
+#        pdb.set_trace()
+        calls["svLen"] = calls.apply(lambda row: ParseSVLen(row["svLen"]), axis=1)
         calls["format"] = ":".join(fmt)
         if "hap" in calls:
             calls["genotype"] = calls.apply(lambda row: GetGenotype(row.hap), axis=1)
@@ -200,7 +227,7 @@ def convert_bed_to_vcf(bed_filename, reference_filename, vcf_filename, sample, v
             axis=1
         )
 
-    simple_calls = calls[["#chrom", "POS", "call_id", "reference", "alt", "quality", "filter", "info", "format", "genotype"]].rename_axis({"#chrom": "#CHROM", "reference": "REF", "call_id": "ID", "quality": "QUAL", "info": "INFO", "alt": "ALT", "filter": "FILTER", "format":"FORMAT", "genotype": sample}, axis=1)
+    simple_calls = calls[["#chrom", "POS", "call_id", "reference", "alt", "quality", "filter", "info", "format", "genotype"]].rename({"#chrom": "#CHROM", "reference": "REF", "call_id": "ID", "quality": "QUAL", "info": "INFO", "alt": "ALT", "filter": "FILTER", "format":"FORMAT", "genotype": sample}, axis=1)
 
     faiFile = open(args.reference + ".fai")
     fai = []

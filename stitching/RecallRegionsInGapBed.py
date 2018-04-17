@@ -8,6 +8,7 @@ import os
 from multiprocessing import Process, Lock, Semaphore, Pool
 import tempfile
 
+
 ap = argparse.ArgumentParser(description="Realign regions in a gap bed file")
 ap.add_argument("--asm", help="Assembled genome", required=False, default=None)
 ap.add_argument("--ref", help="Target genome", required=False, default=None)

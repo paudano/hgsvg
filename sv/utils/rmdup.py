@@ -13,6 +13,7 @@ ap.add_argument("--window", help="Add this to coordinates to see if they overlap
 ap.add_argument("--addLength", help="Add length in this column to the start", type=int, default=None)
 ap.add_argument("-v", help="Opposite (like grep -v), print what would have been removed from ovelrap.",action='store_true', default=False)
 ap.add_argument("--sourceIndex", help="Make sure that overlapping elements are not from the same source contig.  This specifies the index to check.", type=int, default=None)
+ap.add_argument("--dups", help="Write duplicateions here.", default=None)
 
 args = ap.parse_args()
 
@@ -24,10 +25,6 @@ ovpps = 0
 ovppe = 0
 
 maxLine = ""
-
-def Print(l,o,t):
-    
-        o.write(l)
 
 prevSource = None
 curSource  = None

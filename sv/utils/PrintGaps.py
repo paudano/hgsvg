@@ -570,9 +570,6 @@ for samFileName in args.sam:
                         if (args.context > 0):
                             outFile.write("\t{}".format(homopolymer))
 
-                        if (args.qpos):
-                            outFile.write("\t{}\t{}\t{}\t{}".format(qPos, qPos, aln.strand, len(aln.seq)))
-
                         if args.fractionMasked is True:
 			    nMasked = delSeq.count('N')
 			    frac = '0'

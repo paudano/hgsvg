@@ -97,7 +97,6 @@ rule all:
         bnPlot=expand("BioNano.PacBio.Agreement.{sample}.pdf",sample=config["sample"]),
         plot=config["sample"]+".parental_coverage.pdf",
         plotnotrf=config["sample"]+".parental_coverage.no_trf.pdf",        
-        inh="inheritance.bed",
         hethom="het_hom_summary.txt",
 #        merge="sv_calls.bed.trf",
         alt="sv_calls.bed.annotated.alt",
@@ -123,8 +122,21 @@ rule all:
         hettr=expand(gapdir+"/hap{hap}/gaps.recalled.noclust.hettr",hap=mssmHaps),
         gapsClust=expand(gapdir+"/hap{hap}/gaps.recalled.clust",hap=mssmHaps),
         gapsNoClust=expand(gapdir+"/hap{hap}/gaps.recalled.noclust",hap=mssmHaps),
+        meiReport="mei_report.tab",
         dipClusters=gapdir+"/dip_tr_clusters.bed"
 
+
+rule MakeMEIReport:
+    input:
+        vcf="sv_calls.vcf"
+    output:
+        mei="mei_report.tab"
+    params:
+        sge_opts=config["sge_small"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+{params.sd}/../sv/PrintMEIReport.py --vcf {input.vcf} --out {output.mei}
+"""
 
 ################################################################################
 ##
@@ -174,7 +186,7 @@ rule SeparateBNCalls:
         sd=SNAKEMAKE_DIR,
     shell:"""
 nf=`head -1 {input.bncalls} | awk '{{ print NF;}}'`
-egrep "^#|{wildcards.op}" {input.bncalls} | awk '{{ if (substr($0,0,1) == "#" || $3-$2 < 6000000) print; }}' | bedtools groupby -g 1-3 -c 4 -o first -full | cut -f 1-$nf | \
+egrep "^#|{wildcards.op}" {input.bncalls} | awk '{{ if (substr($0,0,1) == "#" || $3-$2 < 6000000) print; }}' | bedtools groupby -header -g 1-3 -c 4 -o first -full | cut -f 1-$nf | \
  {params.sd}/../sv/utils/rmdup.py > {output.bnCallsOp}        
 """
 
@@ -735,7 +747,7 @@ cat {input.svdelann} {input.svinsann} | bedtools sort >> {output.svfixann}
     
 rule SummarizeExons:
     input:
-        sv="sv_calls.bed",
+        sv="sv_calls.base.bed",
     output:
         exons=config["sample"] + ".exons.{op}.bed",
     params:
@@ -1105,7 +1117,8 @@ uwBN=`paste uw.bed.filt.{wildcards.op}.bed bn_filt.uw.{wildcards.op}.bed | \
 echo -e "UW-BN\\t{wildcards.op}\\t$uwBN" >> {output.merged}
 
 echo "mssmmatch" > uw.bed.filt.{wildcards.op}.mssm_match
-bedtools intersect  -a  uw.bed.filt.{wildcards.op}.bed -b mssm.bed.filt.{wildcards.op}.bed.keep  -loj | bedtools groupby -g 1-6 -c 24 -o first -full | awk '{{ if ($24 == ".") {{ print "NO";}} else {{ print "MATCH";}} }}' >> uw.bed.filt.{wildcards.op}.mssm_match
+nf1=`head -1 uw.bed.filt.{wildcards.op}.bed | awk '{{ print NF;}}'`
+bedtools intersect  -a  uw.bed.filt.{wildcards.op}.bed -b mssm.bed.filt.{wildcards.op}.bed.keep  -loj | bedtools groupby -g 1-6 -c $nf1 -o first -full | awk '{{ if ($NF == ".") {{ print "NO";}} else {{ print "MATCH";}} }}' >> uw.bed.filt.{wildcards.op}.mssm_match
         
 uwNoBn=`paste uw.bed.filt.{wildcards.op}.bed bn_filt.uw.{wildcards.op}.bed uw.bed.filt.{wildcards.op}.mssm_match | \
         bioawk -c hdr '{{ if ($bnstatus == "NA" && $mssmmatch == "NO")  print $svLen;}}'  | stats.py | tail -n +2 | tr " " "\\t" | cut -f 1-2`
@@ -1203,7 +1216,7 @@ rm -f {output.svMSSMSource}.tmp
 
 rule FixDelsInSVCalls:
     input:
-        sv="sv_calls.bed",
+        sv="sv_calls.base.bed",
     output:
         svdel="sv_calls.bed.fixed",
     params:
@@ -1310,7 +1323,7 @@ tabix {output.mergedVCFgz}
 
 rule CombineMergedToTracks:
     input:
-        svCalls="sv_calls.bed"
+        svCalls="sv_calls.bed.annotated.tr_fixed.loci"
     output:
         mergedBB=expand("{sample}.{op}.bb",sample=config["sample"],op=shortOps)
     params:
@@ -1381,14 +1394,22 @@ rule GenotypeParents:
     output:
         parent="parent.cov.{pa}.bed"
     params:
-        sge_opts="-pe serial 4 -l mfree=1G -l h_rt=08:00:00",
+        sge_opts="-pe serial 8 -l mfree=1G -l h_rt=08:00:00",
         ref=config["ref"],
         faBam=config["faBams"],
         moBam=config["moBams"],
         sd=SNAKEMAKE_DIR
     shell:"""
-
-{SNAKEMAKE_DIR}/../sv/utils/SpliceVariantsAndCoverageValidate.py --gaps {input.svs} --reads {input.bams} --out {output.parent} --nproc 12 --ref {params.ref} --separate-haplotypes  --blasr {params.sd}/../blasr/alignment/bin/blasr 
+for i in $(seq 0 7); do
+  {SNAKEMAKE_DIR}/../sv/utils/SpliceVariantsAndCoverageValidate.py --gaps {input.svs} --reads {input.bams} --out {output.parent}.$i --nproc 1 --ref {params.ref} --separate-haplotypes  --blasr {params.sd}/../blasr/alignment/bin/blasr  --paIndex $i --paNumber 8 &
+done
+wait
+head -1 {output.parent}.0 > {output.parent}
+for i in $(seq 0 7); do
+tail -n +2 {output.parent}.$i >> {output.parent}
+rm -f {output.parent}.i
+done
+                
 perl -pi -e "s/#region/region_{wildcards.pa}/g" {output.parent}
 perl -pi -e "s/nAlt/nAlt_{wildcards.pa}/g" {output.parent}
 perl -pi -e "s/nRef/nRef_{wildcards.pa}/g" {output.parent}

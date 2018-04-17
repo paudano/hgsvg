@@ -8,6 +8,7 @@ import pysam
 import tempfile
 import subprocess
 import time
+import math
 from multiprocessing import Process, Lock, Semaphore, Pool
 
 import re
@@ -17,6 +18,8 @@ import sys
 ap = argparse.ArgumentParser(description="Given a gaps.bed file, splice variants into the reference, remap reads to this, and count gaps. ")
 ap.add_argument("--gaps",   help="Gaps file (can be insertions and deletions).", required=True)
 ap.add_argument("--ref",    help="Reference file.", required=True)
+ap.add_argument("--paIndex",  help="When other jobs are running, which one is this", default=0,type=int),
+ap.add_argument("--paNumber",  help="How many other jobs are running", default=1,type=int),
 ap.add_argument("--reads",  help="FOFN of aligned reads.", required=False)
 ap.add_argument("--blasr",  help="which blasr to use", required=True)
 ap.add_argument("--flank",  help="Use this amount of the reference when aligning reads", default=900,type=int)
@@ -268,6 +271,14 @@ elif args.falcon:
 else:
     gaps = [ParseGapsLine(line.split()) for line in gapLines]
 
+if args.paNumber > 1:
+    sys.stderr.write("ngaps: " + str(len(gaps)) + "\n")
+    gapsPerJob=int(math.ceil(float(len(gaps))/args.paNumber))
+    start=args.paIndex*gapsPerJob
+    end=min(len(gaps), (args.paIndex+1)*gapsPerJob)
+    sys.stderr.write("Processing " + str(start) + " - " + str(end) + "\n")
+    gaps=gaps[start:end]
+    
 temp=[]
 for g in gaps:
     if g is not None:

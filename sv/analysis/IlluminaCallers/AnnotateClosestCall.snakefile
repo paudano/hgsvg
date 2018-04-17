@@ -145,8 +145,8 @@ rule all:
         intvalbed=expand("int_filt_value.{svtype}.bed", svtype=svTypes),
         reverse=expand("intfinal_reverse.{svtype}.tab",svtype=svTypes),
         scoredSensTable=expand("SensitivitySpecificity.{sample}.{svtype}.{thresh}.scores.tsv",sample=config["sample"], svtype=svTypes,thresh=["2.1", "3.2","4.2"]),
-        pli=expand("{sample}.merged_nonredundant_exon_pli.{svtype}.tab",sample=config["sample"], svtype=svTypes)
-        
+        pli=expand("{sample}.merged_nonredundant_exon.{svtype}.bed.pli",sample=config["sample"], svtype=svTypes),
+        decorated=expand("{s}.properties_of_unified_callset.{svtype}.bed", s=config["sample"],svtype=svTypes)
         
         
         
@@ -198,8 +198,7 @@ rule PBOnlyVcf:
         ref=config["ref"],
         sample=config["sample"]
     shell:"""
-module load numpy/1.11.0
-module load pandas
+
 {SNAKEMAKE_DIR}/../../utils/variants_bed_to_vcf.py --bed {input.pbb} --reference {params.ref} --vcf /dev/stdout  --sample {params.sample} --type sv --addci 5 --fields NALT nAlt NREF nRef SVANN svAnn SVREP svRep SVCLASS svClass NTR nTR BN bnKey SOURCE source --source PHASED-SV --info \"##INFO=<ID=NALT,Number=1,Type=Integer,Description=\\\"Number of reads supporting variant\\\">" "##INFO=<ID=NREF,Number=1,Type=Integer,Description=\\\"Number of reads supporting reference\\\">" "##INFO=<ID=SVANN,Number=1,Type=String,Description=\\\"Repeat annotation of variant\\\">" "##INFO=<ID=SVREP,Number=1,Type=Float,Description=\\\"Fraction of SV annotated as mobile element or tandem repeat\\\">"  "##INFO=<ID=SVCLASS,Number=1,Type=String,Description=\\\"General repeat class of variant\\\">"  "##INFO=<ID=NTR,Number=1,Type=Integer,Description=\\\"Number of tandem repeat bases\\\">"  "##INFO=<ID=BN,Number=1,Type=Float,Description=\\\"Overlap with BioNanoGenomics call.\\\">"  "##INFO=<ID=SOURCE,Number=1,Type=String,Description=\\\"Source method of call, with additional information describing haplotype.\\\">" | bedtools sort -header > {output.pbv}
 """
 
@@ -349,7 +348,7 @@ rule CalcNewFracTR:
 # Fraction of sites overlapping tr
 #
 if [ {wildcards.svtype} == "DEL" ]; then 
-cat {input.exons} | {params.sd}/Transform.py {wildcards.svtype} | bedtools intersect -a stdin -b {params.sd}/../regions/tandem_repeats_strs.bed -loj | bedtools groupby -g 1-3 -c 16,17 -o collapse,collapse  | {params.sd}/../../utils/PrintFractionTR.py --header frac_tr > {output.exontr}
+cat {input.exons} | {params.sd}/Transform.py {wildcards.svtype} | bedtools intersect -a stdin -b {params.sd}/../../../regions/tandem_repeats_strs.bed -loj | bedtools groupby -g 1-3 -c 16,17 -o collapse,collapse  | {params.sd}/../../utils/PrintFractionTR.py --header frac_tr > {output.exontr}
 else
 echo "frac_tr" > {output.exontr}
 cat {input.exons} | bioawk -c hdr '{{ if (NR > 1) {{b=length($svSeq); print ">"b"#"$svSeq;}} }}' | {params.sd}/../../analysis/RecalcFracTRLine.sh >> {output.exontr}
@@ -419,7 +418,21 @@ paste {output.exonSummary}.1 {output.exonSummary}.2 {output.exonSummary}.3 {outp
 
 /bin/rm -f paste {output.exonSummary}.1 {output.exonSummary}.2 {output.exonSummary}.3 {output.exonSummary}.4         
 """
-    
+
+rule MakeDecoratedExonSummary:
+    input:
+        exonSummary=config["sample"]+".merged_nonredundant_exon_summary.{svtype}.bed",
+        exon_decorate=config["sample"]+".exon_decorate.{svtype}.txt",
+    output:
+        decorated=config["sample"]+".properties_of_unified_callset.{svtype}.bed",
+    params:
+        sge_opts=config["sge_small"],
+        ref=config["ref"],
+        sd=SNAKEMAKE_DIR,
+    shell:"""
+paste {input.exonSummary} {input.exon_decorate} > {output.decorated}
+"""
+        
 rule MakeIntOrthTable:
     input:
         query="int_orthset_mapped.{svtype}.bed"
@@ -598,7 +611,7 @@ rule ScoreRuns:
     shell:"""
 rm -f SensitivitySpecificity.{params.sample}.{wildcards.svtype}.{wildcards.count}.{wildcards.minn}.scores.tsv
 touch SensitivitySpecificity.{params.sample}.{wildcards.svtype}.{wildcards.count}.{wildcards.minn}.scores.tsv
-for comb in `bioawk -c hdr -v ncrlim={params.ncr} '{{ if ($ncr < ncrlim) print; }}' < {input.sensTable} | sort -k1,1nr | grep -v liWGS | head -10 |  cut -f 4`; do
+for comb in `bioawk -c hdr -v ncrlim={params.ncr} '{{ if ($ncr < ncrlim) print; }}' < {input.sensTable} | sort -k1,1nr | grep -v liWGS |  cut -f 4`; do
 
 echo "{params.sd}/ScoreSubset.sh --comb $comb --mincount {wildcards.minn} --sample {params.sample} --operation {wildcards.svtype} --integrated {input.intfilt} >> SensitivitySpecificity.{params.sample}.{wildcards.svtype}.{wildcards.count}.{wildcards.minn}.scores.tsv" > /dev/stderr
         
@@ -640,7 +653,6 @@ rule PlotSVs:
         sample=config["sample"],
         method=config["method"]
     shell:"""
-module load R/3.2.1
 Rscript {params.sd}/RenderStackedBarchart.R --tab {input.merged} --sample {params.sample} --op {wildcards.op} --method {params.method}
 """
 
@@ -1573,7 +1585,7 @@ rule AddPLI:
     input:
        bed="{sample}.merged_nonredundant_exon.{svtype}.bed",
     output:
-       pli="{sample}.merged_nonredundant_exon_pli.{svtype}.tab",
+       pli="{sample}.merged_nonredundant_exon.{svtype}.bed.pli",
     params:
         sge_opts="-pe serial 6 -l h_rt=2:00:00 -l mfree=8G",
         sd=SNAKEMAKE_DIR,

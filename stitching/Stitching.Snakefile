@@ -14,7 +14,7 @@ elif os.path.exists(SSD_TMP_DIR):
 else:
     TMPDIR = tempfile.gettempdir()
 
-configfile: "config.json"
+configfile: "stitching.json"
 
 def GetFastq(fofn):
     f=open(fofn)

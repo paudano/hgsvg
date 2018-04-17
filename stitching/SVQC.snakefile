@@ -779,7 +779,6 @@ rule MakeFillIn:
         fillInHap="fill-in/hap{hap}/gaps.all.bed"
     params:
         sge_opts="-cwd -pe serial 1 -l mfree=4G -l h_rt=04:00:00 -l disk_free=4G",
-        pbs=config["pbs"],
         ref=config["ref"],
         sd=SNAKEMAKE_DIR
 #
@@ -791,7 +790,7 @@ mkdir -p fill-in/hap{wildcards.hap}
 samtools view {input.contigBam} `cat {input.fillInRegion} | awk '{{ print $1":"$2"-"$3;}}' | tr "\\n" " "` | \
 sort -k1,1 -k2,2n | \
 uniq | \
-{params.pbs}/PrintGaps.py {params.ref} /dev/stdin --maxMasked 10 --minAlignmentLength 30000 --minContigLength 30000 --condense 20  | \
+{params.sd}/../sv/utils/PrintGaps.py {params.ref} /dev/stdin --maxMasked 10 --minAlignmentLength 30000 --minContigLength 30000 --condense 20  | \
   bedtools sort -header | \
   {params.sd}/../sv/utils/rmdup.py > {output.fillInHap}
 """
@@ -830,7 +829,6 @@ rule FillInIndel:
         indel="fill-in/hap{hap}/indels.{op}.bed",
     params:
         sge_opts="-cwd -pe serial 1 -l mfree=6G -l h_rt=04:00:00 ",
-        pbs=config["pbs"],
         ref=config["ref"],
         sd=SNAKEMAKE_DIR        
     shell:"""
@@ -838,7 +836,7 @@ rule FillInIndel:
   samtools view {input.contigBam} `cat {input.fillInRegion} | awk '{{ print $1":"$2"-"$3;}}' | tr "\n" " "` | \
   sort -k1,1 -k2,2n | \
   uniq | \
-    {params.pbs}/PrintGaps.py {params.ref} /dev/stdin --minLength 2 --maxLength 50 | \
+    {params.sd}/../sv/utils/PrintGaps.py {params.ref} /dev/stdin --minLength 2 --maxLength 50 | \
   grep {wildcards.op} | bedtools sort -header | \
   bedtools intersect -header -a stdin -b {params.sd}/../regions/Regions.Called.bed -wa -u > {output.indel}
 """

@@ -29,9 +29,9 @@ faStart = None
 moStart = None
 moPrev  = None
 faPrev = None
-for rec in vcfFile.fetch(): #rgn[0],int(rgn[1]), int(rgn[2])):
+for rec in vcfFile.fetch():
     #
-    # Fater is homozygous, motheris het, so it is possible to determine hertiance from mother
+    # Father is homozygous, motheris het, so it is possible to determine hertiance from mother
     #
 
     if rec.samples[args.child]['PS'][0] != '.' and \
@@ -46,6 +46,7 @@ for rec in vcfFile.fetch(): #rgn[0],int(rgn[1]), int(rgn[2])):
              (moInherited, moRetained) = GetInheritance(ch[moHap], mo)
              if moPrev is None or moPrev[0] != rec.chrom:
                  if moPrev is not None:
+                     print "writing to mo"
                      moOut.write(str(moStart[0]) + "\t" + str(moStart[1]) + "\t" + str(moPrev[1]) +"\t" + str(moPrev[2]) + "\t" + str(moPrev[3]) + "\n")                     
                  moPrev = (rec.chrom, rec.start, moInherited, moHap)
                  moStart = (rec.chrom, rec.start, moInherited, moHap)

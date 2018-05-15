@@ -11,6 +11,8 @@ from multiprocessing import Process, Lock, Semaphore, Pool, Value
 ap = argparse.ArgumentParser(description="Determine how many pb reads overlap an Illumina call")
 ap.add_argument("--calls", help="Calls", required=True)
 ap.add_argument("--fofn", help="FOFN of pb-bams", required=True)
+ap.add_argument("--window", help="Extend search to these sides.", default=0,type=int)
+ap.add_argument("--minSVLen", help="Minimum size of variant to consider.", default=0,type=int)
 ap.add_argument("--out", help="Output file.", default="/dev/stdout")
 ap.add_argument("--nproc", help="Number of threads.", default=1,type=int)
 ap.add_argument("--op", help="Guide coverage by operation", default="DEL")
@@ -56,10 +58,10 @@ def ProcessLine(line):
     # Hack to get past bad biono calls where end=start
     if regionEnd == regionStart:
         regionEnd=regionStart+1
-    region = vals[0] + ":" + vals[1] + "-" + vals[2]
+    region = vals[0] + ":" + str(int(vals[1])-args.window) + "-" + str(int(vals[2])+args.window)
     
     tempFileNames = []
-    regionLength = regionEnd-regionStart
+    regionLength = args.window+regionEnd-max(0,regionStart-args.window)
     cov = [0]*(regionLength)
 
     sys.stderr.write("Getting coverage for " + str(counter.value) + " of " + str(nsv) + " " + str(regionEnd - regionStart) + "\n")
@@ -70,12 +72,11 @@ def ProcessLine(line):
     b = bamFileIndex[vals[0]]
 
     sem.acquire()
-    covall = bamFiles[b].count_coverage(vals[0], regionStart, regionEnd, quality_threshold=0)
+    covall = bamFiles[b].count_coverage(vals[0], max(0,regionStart-args.window), regionEnd+args.window, quality_threshold=0)
     sem.release()
     for i in range(0,len(covall[0])):
         cov[i] = covall[0][i] + covall[1][i] + covall[2][i]  + covall[3][i]
-
-    
+        
     
     total=sum(cov)
     if args.writecov is not None:
@@ -83,9 +84,9 @@ def ProcessLine(line):
         covFile.write("\t".join([str(p) for p in range(regionStart,regionEnd)]) + "\n")
         
     if args.bionano:
-        svLen = int(vals[args.svlen])
+        svLen = int(vals[h["svLen"]])
         
-        if len(cov) < svLen:
+        if len(cov) < svLen or svLen < args.minSVLen:
             if len(cov) == 0:
                 return 0
             else:
@@ -98,17 +99,15 @@ def ProcessLine(line):
             minWSum = curSum
             maxWSum = curSum
             for i in range(1, len(cov) - svLen ):
-#                wSum=sum(cov[i:i+svLen])
-
                 curSum-=cov[i-1]
                 curSum+=cov[i+svLen-1]
                 if curSum < minWSum:
                     minWSum = curSum
                 if curSum > maxWSum:
                     maxWSum = curSum
-#            sys.stderr.write(" ".join(["{:2.2f}".format(i) for i in mc]) + "\n")
+
             if svLen > 0:
-                sys.stderr.write(str(svLen) + " minsv: " + str(minWSum) + " total " + str(sum(cov)) + "\tmin {:2.2f}\tmax {:2.2f}\tregion {:2.2f}".format(minWSum / float(svLen), maxWSum/float(svLen), sum(cov) / float(len(cov))) + " " + str(len(cov))+ "\n")
+                sys.stderr.write(str(svLen) + " minsv: " + str(minWSum) + " total " + str(sum(cov)) + "\tmin {:2.2f}\tmax {:2.2f}\tregion {:2.2f}".format(minWSum / float(svLen), maxWSum/float(svLen), sum(cov) / float(len(cov))) + " " + str(len(cov))+ "\t" + str(svLen) +  "\n")
             if args.op == "DEL":
                 if svLen > 0:
                     return minWSum/float(svLen)
@@ -132,6 +131,9 @@ def ProcessLine(line):
 lines = callFile.readlines()
 
 if len(lines) > 0 and lines[0][0] == "#":
+    hl=lines[0].split()
+    h={hl[i] : i for i in range(0,len(hl))}
+    
     lines = lines[1:]
 nsv = len(lines)
 if args.nproc > 1:    

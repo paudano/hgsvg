@@ -50,8 +50,6 @@ rule all:
         pbcalls=expand("pbfinal.{svtype}.bed",svtype=svTypes),
         pbfinalquery=expand("pbfinal_query.{svtype}.bed",svtype=svTypes),
         pbByType=expand("pbcalls.{svtype}.bed", svtype=svTypes),
-#        pbClipped=expand("clipped_hap.pb.h{hap}.bed", hap=haps),
-#        pbClippedAll="clipped_all.pb.bed",
         svbnIsect=expand("bn_int_query_overlap.{svtype}.bed",svtype=svTypes),
         svQuery=expand("query.{svtype}.bed",svtype=svTypes),
         bnQuery=expand("bnquery.{svtype}.bed",svtype=svTypes),
@@ -66,17 +64,15 @@ rule all:
         readIsect=expand("read_overlap.{svtype}.tab",svtype=svTypes),
         bnReadIsect=expand("bn_read_overlap.{svtype}.bed",svtype=svTypes),
         svCoverage=expand("bn_read_cov.{svtype}.bed",svtype=svTypes),
+        intSvCoverage=expand("int_read_cov.{svtype}.bed",svtype=svTypes),
         ilmnMaster=expand("int.{svtype}.bed",svtype=svTypes),
+        ilmnRawSup=expand("int.{svtype}.support",svtype=svTypes),
         intPass=expand("int_pass.{svtype}.tab",svtype=svTypes),
         pcel=expand(config["sample"] + ".{svtype}.{score}.pcEL.tsv",svtype=svTypes, score=["20","100"]),
-        
-#        pbfinalintisect=expand("pbfinal_query_int_isect.{svtype}.bed",svtype=svTypes),
-#        pbfinalintbest=expand("pbfinal_query_int_best.{svtype}.bed",svtype=svTypes),
         intFiltPbFinalIsect=expand("int_pb_isect.{svtype}.bed",svtype=svTypes),
         bnIntersect=expand("bn_pb_isect.{svtype}.bed",svtype=svTypes),
         intbn=expand("int_filt_bn_isect.{svtype}.bed",svtype=svTypes),
         pbfinal_bn_annot=expand("pbfinal_bn_annot.{svtype}.tab",svtype=svTypes),
-#        pbfinal_int_annot=expand("pbfinal_int_annot.{svtype}.tab",svtype=svTypes),
         bn_filt=expand("bn_filt.{svtype}.bed",svtype=svTypes),
         pborthotag=expand("pbfinal_ortho_annot.{svtype}.tab",svtype=svTypes),
         intorthotag=expand("int_filt_ortho_annot.{svtype}.tab",svtype=svTypes),
@@ -123,11 +119,9 @@ rule all:
         sensUnion22=expand("SensitivitySpecificity.{sample}.{svtype}.2.2.pdf",sample=config["sample"],svtype=svTypes),
         sensUnion=expand("SensitivitySpecificity.{sample}.{svtype}.2.1.pdf",sample=config["sample"],svtype=svTypes),        
         sensIsect=expand("SensitivitySpecificity.{sample}.{svtype}.3.2.pdf",sample=config["sample"],svtype=svTypes),
-        sensIsect2=expand("SensitivitySpecificity.{sample}.{svtype}.4.2.pdf",sample=config["sample"],svtype=svTypes),
         sensTable21=expand("SensitivitySpecificity.{sample}.{svtype}.2.2.tsv",sample=config["sample"],svtype=svTypes),
         sensTable20=expand("SensitivitySpecificity.{sample}.{svtype}.2.1.tsv",sample=config["sample"],svtype=svTypes),
         sensTable32=expand("SensitivitySpecificity.{sample}.{svtype}.3.2.tsv",sample=config["sample"],svtype=svTypes),
-        sensTable42=expand("SensitivitySpecificity.{sample}.{svtype}.4.2.tsv",sample=config["sample"],svtype=svTypes),        
         integrated_pbfinal=expand("integrated_pbfinal_isect.{svtype}.bed",svtype=svTypes),
         classplot=expand("{sample}.{svtype}.exon_class.pdf",sample=config["sample"],svtype=svTypes),
         classplottsv=expand("{sample}.{svtype}.exon_class.tsv",sample=config["sample"],svtype=svTypes),
@@ -144,11 +138,17 @@ rule all:
         intval=expand("int_filt_value.{svtype}.tab", svtype=svTypes),
         intvalbed=expand("int_filt_value.{svtype}.bed", svtype=svTypes),
         reverse=expand("intfinal_reverse.{svtype}.tab",svtype=svTypes),
-        scoredSensTable=expand("SensitivitySpecificity.{sample}.{svtype}.{thresh}.scores.tsv",sample=config["sample"], svtype=svTypes,thresh=["2.1", "3.2","4.2"]),
+        scoredSensTable=expand("SensitivitySpecificity.{sample}.{svtype}.{thresh}.scores.tsv",sample=config["sample"], svtype=svTypes,thresh=["2.1", "3.2"]),
         pli=expand("{sample}.merged_nonredundant_exon.{svtype}.bed.pli",sample=config["sample"], svtype=svTypes),
-        decorated=expand("{s}.properties_of_unified_callset.{svtype}.bed", s=config["sample"],svtype=svTypes)
+        decorated=expand("{s}.properties_of_unified_callset.{svtype}.bed", s=config["sample"],svtype=svTypes),
+        excludeSimpleAndMEI=expand("excluding_simple_and_mei.{op}.bed",op=svTypes),
+        netSimplePB=expand("excluding_simple_and_mei_pb_gain.{op}.tab",  op=svTypes),
+        UniqueExons=expand("excluding_simple_and_mei_exon.{op}.bed", op=svTypes),
+        GainAnnotationSummary=expand("Gain_annotation_Summary.{op}.tab",op=svTypes),
+        simpleReciprocal=expand("simple_reciprocal.{op}.bed",op=svTypes),
         
         
+  
         
 
 localBams = { "0": config["localasm"][0], "1": config["localasm"][1] }
@@ -161,6 +161,111 @@ if "bn_read_cov" not in config:
 
 if "softclip" not in config:
     config["softclip"] = "NONE"
+
+
+rule SimpleReciprocal:
+    input:
+        il="integrated.{op}.bed",
+        pb="pbfinal.{op}.bed"
+    output:
+        sr="simple_reciprocal.{op}.bed"
+    shell:"""
+nf=`head -1 {input.il} | awk '{{ print NF;}}'`
+fld=$(($nf+1))
+bedtools intersect -header -loj -f 0.5 -r  -a {input.il} -b {input.pb} | \
+  bedtools groupby -header -g 1-5 -c $nf -o first -full | \
+  bioawk -c hdr '{{ if ($(NF-1) != ".") {{ n+=1;l+=$svLen;}} }} END{{ print NR"\\t"n;}}' > {output.sr}
+"""
+    
+rule CountIlluminaRawSupport:
+    input:
+        tab="integrated.{svtype}.bed"
+    output:
+        ilmnRawSup="int.{svtype}.support",
+    params:
+        fofn=config["fofn"],
+        sd=SD,
+    shell:"""
+{params.sd}/CheckReadAgreementOfSV.py --fofn {params.fofn}  --bed {input.tab} --outFile {output.ilmnRawSup}
+"""
+
+rule MakeGainAnnotationSummary:
+    input:
+        comb=config["sample"] + ".merged_nonredundant.{op}.bed",
+    output:
+        gain="Gain_annotation_Summary.{op}.tab",
+    params:
+        sd=SD,
+    shell:"""
+# 1. Get totals
+cat {input.comb} | bioawk -c hdr '{{ if ($union == "PacBio" || $union == "PacBio,BioNano") {{ n+=1; nBP+=$3-$2;}} }} END{{ print "Total\\t"n"\\t"nBP;}}' > {output.gain}
+
+#. 2 Count telomeric SVs (general).
+bedtools intersect -header -a {input.comb} -b {params.sd}/../../../regions/hg38.telomeres_500k.bed -u | bioawk -c hdr '{{ if ($union == "PacBio" || $union == "PacBio,BioNano") {{ n+=1; nBP+=$3-$2;}} }} END{{ print "Telomeric\\t"n"\\t"nBP;}}' >> {output.gain}
+
+#. Tandem repeats.
+cat {input.comb}| \
+   bioawk -c hdr '{{ if ( ($union == "PacBio" || $union == "PacBio,BioNano") && (($is_trf == "TR" && ($svAnn == "NONE" || $svAnn == "0"))  || $svAnn == "TandemRepeat" )) \
+        {{ n+=1; nBP+=$3-$2;}} }} END{{ print "Tandem Repeat\\t"n"\\t"nBP;}}'>> {output.gain}
+
+#. Unique 
+       
+cat {input.comb}| \
+   bioawk -c hdr '{{ if ( ($union == "PacBio" || $union == "PacBio,BioNano") && ($is_trf != "TR" && $svAnn != "TandemRepeat" && $svRep < 0.8 )) \
+        {{ n+=1; nBP+=$3-$2;}} }} END{{ print "Not-repetitive\\t"n"\\t"nBP;}}'>> {output.gain}
+
+# Mobile elements
+cat {input.comb}| \
+   bioawk -c hdr '{{ if ( ($union == "PacBio" || $union == "PacBio,BioNano") && \
+        ($svAnn != "TandemRepeat") && \
+        ($svAnn != "NONE") && \
+        (match($svAnn,",") == 0) && \
+        ($svAnn != "0") && \
+        ($svRep >= 0.8) && \
+        (match($svAnn, "Alu") > 0 || match($svAnn, "SVA") > 0 || match($svAnn, "HERV") > 0 || match($svAnn,"L1") > 0)) {{
+         n+=1; nBP+=$3-$2;}} }} END{{ print "Mobile element\\t"n"\\t"nBP;}}'>> {output.gain}
+
+# coding
+cat {input.comb}| \
+   {params.sd}/../../../sv/utils/ToPoint.sh | \
+   bedtools intersect -header -a stdin -b {params.sd}/../../../regions/Exons.NoUTR.bed -u | \
+   bioawk -c hdr '{{ if ( ($union == "PacBio" || $union == "PacBio,BioNano") && $svAnn !="locus" ) \
+        {{ n+=1; nBP+=$svLen;}} }} END{{ print "Coding\\t"n"\\t"nBP;}}' >> {output.gain} 
+    
+"""
+
+rule MakeSimpleAndNotMEI:
+    input:
+        comb=config["sample"] + ".merged_nonredundant.{op}.bed"
+    output:
+        uniq="excluding_simple_and_mei.{op}.bed",
+        tab="excluding_simple_and_mei_pb_gain.{op}.tab",
+    params:
+        sge_opts=config["sge_small"],
+        s=config["sample"]
+    shell:"""
+cat {input.comb}| \
+   bioawk -c hdr '{{ if (NR==1 || ($is_trf != "TR" && $svAnn != "TandemRepeat" &&  $svRep< 0.8 )) \
+   print $_chrom"\\t"$tStart"\\t"$tEnd"\\t"$hap"\\t"$svType"\\t"$svLen"\\t"$svClass"\\t"$callset"\\t"$union"\\t"$svAnn"\\t"$svRep"\\t"$fracTR"\\t"$is_trf;}}' >{output.uniq}
+
+cat {output.uniq} | bioawk -c hdr '{{ \
+  if ($union == "PacBio" || $union  == "PacBio,BioNano") {{ nPB++; lPB+=$svLen; }} \
+  if ($union == "PacBio,Illumina") {{ nPBIL++; lPBIL+=$svLen; }} }} \\
+  END {{ print {params.s}"\\t"nPB"\\t"lPB"\\t"lPB/nPB"\\t"nPBIL"\\t"lPBIL"\\t"lPBIL/nPBIL;}}' > {output.tab}
+        
+"""
+   
+rule MakeSimpleAndNotMEIExons:
+    input:
+        uniq="excluding_simple_and_mei.{op}.bed",
+    output:
+        exons="excluding_simple_and_mei_exon.{op}.bed",
+    params:
+        sge_opts=config["sge_small"],
+        sd=SD,
+    shell:"""
+cat {input.uniq} | {params.sd}/../../../sv/utils/ToPoint.sh  |  bedtools intersect  -a stdin -b {params.sd}/../../../regions/Exons.NoUTR.bed -u -wa| grep -v locus  > {output.exons}
+"""
 
 rule ReclassifyMergedNonredundant:
     input:
@@ -600,6 +705,7 @@ rule ScoreRuns:
     input:
         sensTable=expand("SensitivitySpecificity.{sample}.{{svtype}}.{{count}}.{{minn}}.tsv",sample=config["sample"]),
         intfilt="int_filt.{svtype}.bed",
+        intfinalpbisect="intfinal_query_pb_isect.{svtype}.bed",        
         mnr=expand("{sample}.merged_nonredundant.{{svtype}}.bed.rec",sample=config["sample"])
     output:
         scoredSensTable=expand("SensitivitySpecificity.{sample}.{{svtype}}.{{count}}.{{minn}}.scores.tsv",sample=config["sample"])
@@ -609,13 +715,16 @@ rule ScoreRuns:
         sd=SNAKEMAKE_DIR,
         sample=config["sample"]
     shell:"""
+
+paste {input.intfilt} {input.intfinalpbisect} > {input.intfilt}.final
+
 rm -f SensitivitySpecificity.{params.sample}.{wildcards.svtype}.{wildcards.count}.{wildcards.minn}.scores.tsv
 touch SensitivitySpecificity.{params.sample}.{wildcards.svtype}.{wildcards.count}.{wildcards.minn}.scores.tsv
 for comb in `bioawk -c hdr -v ncrlim={params.ncr} '{{ if ($ncr < ncrlim) print; }}' < {input.sensTable} | sort -k1,1nr | grep -v liWGS |  cut -f 4`; do
 
-echo "{params.sd}/ScoreSubset.sh --comb $comb --mincount {wildcards.minn} --sample {params.sample} --operation {wildcards.svtype} --integrated {input.intfilt} >> SensitivitySpecificity.{params.sample}.{wildcards.svtype}.{wildcards.count}.{wildcards.minn}.scores.tsv" > /dev/stderr
+echo "{params.sd}/ScoreSubset.sh --comb $comb --mincount {wildcards.minn} --sample {params.sample} --operation {wildcards.svtype} --integrated {input.intfilt}.final >> SensitivitySpecificity.{params.sample}.{wildcards.svtype}.{wildcards.count}.{wildcards.minn}.scores.tsv" > /dev/stderr
         
-{params.sd}/ScoreSubset.sh --comb $comb --mincount {wildcards.minn} --sample {params.sample} --operation {wildcards.svtype} --integrated {input.intfilt} >> SensitivitySpecificity.{params.sample}.{wildcards.svtype}.{wildcards.count}.{wildcards.minn}.scores.tsv
+{params.sd}/ScoreSubset.sh --comb $comb --mincount {wildcards.minn} --sample {params.sample} --operation {wildcards.svtype} --integrated {input.intfilt}.final >> SensitivitySpecificity.{params.sample}.{wildcards.svtype}.{wildcards.count}.{wildcards.minn}.scores.tsv
         
 
   
@@ -629,10 +738,8 @@ rule PlotSensSpec:
         sensUnion="SensitivitySpecificity.{sample}.{svtype}.3.2.pdf",
         sensIsect="SensitivitySpecificity.{sample}.{svtype}.2.2.pdf",
         sensUnionTwo="SensitivitySpecificity.{sample}.{svtype}.2.1.pdf",    
-        sensIsect2="SensitivitySpecificity.{sample}.{svtype}.4.2.pdf",        
         sensTable="SensitivitySpecificity.{sample}.{svtype}.2.2.tsv",
         sensTable21="SensitivitySpecificity.{sample}.{svtype}.2.1.tsv",        
-        sensTable42="SensitivitySpecificity.{sample}.{svtype}.4.2.tsv",
         sensTable32="SensitivitySpecificity.{sample}.{svtype}.3.2.tsv",        
     params:
         sge_opts=config["sge_small"],
@@ -745,8 +852,8 @@ rule FilterBNCalls:
         sd=SNAKEMAKE_DIR,
     shell:"""
 paste {input.bnCalls} {input.pbQuery} {input.readOvp} {input.readCov} {input.intOvp} | \
-  bioawk -c hdr -v op={wildcards.op} '{{ if (NR==1 || \
-          ($pbbest > 0.5 || ($overlap > 0.5 && $number > 5) || op=="INS" || (op=="DEL" && $coverage < 30))) print; }}' > {output.bnFile}
+  bioawk -c hdr -v op="{wildcards.op}" '{{ if (NR==1 || \
+          ($pbbest > 0.25 || ($overlap > 0.5 && $number > 5) || op=="INS" || (op=="DEL" && $coverage < 30))) print; }}' > {output.bnFile}
 """
     
         
@@ -774,13 +881,20 @@ rule IntegratedFilter:
     input:
         intPbSup="pbbest.{svtype}.tab",
         intBnSup="bnbest.{svtype}.tab",
-        readOvp="read_overlap.{svtype}.tab"
+        readOvp="read_overlap.{svtype}.tab",
+        intcov="int_read_cov.{svtype}.bed",
+        sup="int.{svtype}.support"        
     output:
-        intPass="int_pass.{svtype}.tab"
+        intPass="int_pass.{svtype}.tab",        
     params:
         sge_opts="-pe serial 1 -l h_rt=1:00:00 -l mfree=2G",
+        svtype=lambda wildcards: wildcards.svtype
     shell:"""
-paste {input.intPbSup} {input.intBnSup} {input.readOvp} | bioawk -c hdr '{{ if (NR==1) {{ print "orth_filter";}} else {{ if (($number >= 5) || $pbbest > 0.5 || $bnoverlap > 0.5) {{print "PASS";}} else {{ print "FAIL";}} }} }}' > {output.intPass}
+if [ {params.svtype} == "DEL" ]; then 
+   paste {input.intPbSup} {input.intBnSup} {input.readOvp} {input.intcov} {input.sup} | bioawk -c hdr '{{ if (NR==1) {{ print "orth_filter";}} else {{ if (($number >= 3) || $pbbest > 0.25 || $bnoverlap > 0.25 || $coverage < 15 || $nSupport > 3) {{print "PASS";}} else {{ print "FAIL";}} }} }}' > {output.intPass}
+else
+   paste {input.intPbSup} {input.intBnSup} {input.readOvp} {input.intcov} {input.sup} | bioawk -c hdr '{{ if (NR==1) {{ print "orth_filter";}} else {{ if (($number >= 3) || $pbbest > 0.25 || $bnoverlap > 0.25 || $nSupport > 3) {{print "PASS";}} else {{ print "FAIL";}} }} }}' > {output.intPass}
+fi
 """
 
 rule AnnotateIntegratedPass:
@@ -1002,7 +1116,7 @@ rule AddIntOrthoTags:
     params:
         sge_opts="-pe serial 1 -l h_rt=1:00:00 -l mfree=2G",
     shell:"""
-echo -e "callset\tin_int\tin_pb\tin_bn" > {output.tag}
+echo -e "callset\\tin_int\\tin_pb\\tin_bn" > {output.tag}
 paste {input.intfilt} {input.intpb} | bioawk -c hdr '{{ in_pb="FALSE"; in_bn="FALSE"; \
   if ($int_filt_pb_key != "NONE") {{ in_pb="TRUE"; }} \
   if ($bnoverlap >= 0.5) {{ in_bn="TRUE"; }} \
@@ -1065,14 +1179,16 @@ rule MakeIntegratedMaster:
         intPbSup="pbbest.{svtype}.tab",
         intBnSup="bnbest.{svtype}.tab",
         readOvp="read_overlap.{svtype}.tab",
-        intPass="int_pass.{svtype}.tab"
+        intPass="int_pass.{svtype}.tab",
+        intcov="int_read_cov.{svtype}.bed",
+        sup="int.{svtype}.support"
     output:
         intMaster="int.{svtype}.bed"
     params:
         sge_opts="-pe serial 1 -l h_rt=1:00:00 -l mfree=2G",
     shell:"""
 
-paste {input.intOrig} {input.intPbSup} {input.intBnSup} {input.readOvp} {input.intPass} > {output.intMaster}
+paste {input.intOrig} {input.intPbSup} {input.intBnSup} {input.readOvp} {input.intPass} {input.intcov} {input.sup} > {output.intMaster}
 """
 
 rule FilteredIntegratedCalls:
@@ -1272,6 +1388,25 @@ else
 cp {params.softclip}.{wildcards.hap}.bed {output.softclip}
 """
 
+rule MakeILLSVCoverage:
+    input:
+        calls="integrated.{svtype}.bed"
+    output:
+        svCoverage="int_read_cov.{svtype}.bed",
+    params:
+        sge_opts="-pe serial 8 -l h_rt=1:00:00 -l mfree=2G",
+        sd=SNAKEMAKE_DIR,
+        fofn=config["fofn"],
+        read_cov=config["bn_read_cov"]
+    shell:"""
+if [ {params.read_cov} == "NONE" ]; then
+{params.sd}/SVCoverage.py --fofn {params.fofn} --calls {input.calls} --out {output.svCoverage} --nproc 1 --bionano --op {wildcards.svtype} --header --window 1000
+else
+cp {params.read_cov}.{wildcards.svtype}.bed {output.svCoverage}
+fi
+"""
+
+    
 rule MakeBioNanoSVCoverage:
     input:
         bncalls="bncalls.{svtype}.bed"
@@ -1313,8 +1448,10 @@ rule MakeReadIsect:
         gaps=config["pb_read_gaps"],
         sge_opts="-pe serial 8 -l h_rt=8:00:00 -l mfree=2G",
         sd=SNAKEMAKE_DIR,
+        svOp=lambda wildcards: pbSVTypeMap[wildcards.svtype]
     shell:"""
-bedtools intersect -sorted -f 0.5 -r -loj -a {input.sv} -b {params.gaps} | \
+cat {params.gaps} | bioawk -v op={params.svOp} -c hdr '{{ if (NR==1 || $svType == op) {{ print;}} }}' | \
+bedtools intersect -sorted -f 0.5 -r -loj -a {input.sv} -b stdin | \
 bedtools groupby  -g 1-5 -c 3 -o count | awk '{{ if (NR==1) print "number"; print $NF;}}' > {output.readIsect}
 """
 rule MakeBNReadIsect:

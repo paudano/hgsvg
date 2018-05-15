@@ -163,7 +163,7 @@ def ProcessLine(line):
     if args.isbn is True:
         bnIdxOp = " --bnidx"
         
-    cmd = "/net/eichler/vol5/home/mchaisso/projects/HGSVG/hgsvg/sv/analysis/IlluminaCallers/SelectBestcall.py --infile {} --count 0.7 --ts {} --te {} --svlen 10 {} --out {}".format(isect.name, args.ts, args.te, bnIdxOp, ovp.name)
+    cmd = "/net/eichler/vol5/home/mchaisso/projects/HGSVG/hgsvg/sv/analysis/IlluminaCallers/SelectBestcall.py --infile {} --count 0.5 --ts {} --te {} --svlen 10 {} --out {}".format(isect.name, args.ts, args.te, bnIdxOp, ovp.name)
     tempFileNames.append(ovp.name)
     sys.stderr.write(cmd + "\n")
 

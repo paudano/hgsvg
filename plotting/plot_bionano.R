@@ -76,7 +76,7 @@ pbSvLen <- c(bnDel$svLen_2, bnIns$svLen_2)
 
 pdf(sprintf("BioNano.PacBio.Agreement.%s.pdf",args$sample))
 i <- which(bnDel$svLen_2 > 1)
-plot(bnDel$svLen[i], bnDel$svLen_2[i], log="xy", xlim=c(100,50000),ylim=c(100,50000),pch=16,cex=0.5,col="#FF000044", xlab="BioNanoGenomic SV Length", ylab="PacBio SV Length", main=sprintf("BioNanoSVVersusPacBio.%s.pdf",args$sample))
+plot(bnDel$svLen[i], bnDel$svLen_2[i], log="xy", xlim=c(100,50000),ylim=c(100,50000),pch=16,cex=0.5,col="#FF000044", xlab="BioNanoGenomic SV Length", ylab="PacBio SV Length", main=sprintf("%s BioNano vs PacBio SV size",args$sample))
 i <- which(bnIns$svLen_2 > 1)
 points(bnIns$svLen[i], bnIns$svLen_2[i], pch=16,cex=0.5, col="#00000044")
 legend("topleft", legend=c("Insertion", "Deletion"),pch=16,col=c("black", "red"))

@@ -66,7 +66,7 @@ rule ApplyPolish:
     output:
         polish="{sample}.{hap}.polish.fasta",
     params:
-        sge_opts="-pe serial 1 -l h_rt=1:00:00 -l mfree=8G",
+        grid_opts="-pe serial 1 -l h_rt=1:00:00 -l mfree=8G",
         sd=SD
     shell:"""
 {params.sd}/ApplyVCFPatch.py --genome {input.assembly} --vcf {input.vcf} --out {output.polish}
@@ -79,7 +79,7 @@ rule MakeDummyChroms:
     output:
         dummy=dynamic("dummy/contig.h0.{contig}.txt"),
     params:
-        sge_opts=config["grid_small"]
+        grid_opts=config["grid_small"]
     shell:"""
 samtools faidx {input.fasta}
 mkdir -p dummy;
@@ -94,7 +94,7 @@ rule MakeDummyChromsH1:
     output:
         dummy=dynamic("dummy/contig.h1.{contig}.txt"),
     params:
-        sge_opts=config["grid_small"]
+        grid_opts=config["grid_small"]
     shell:"""
 samtools faidx {input.fasta}
 mkdir -p dummy;
@@ -111,7 +111,7 @@ rule CallVariantsOnChromH0:
     output:
         vcf="vcfs/contigs.h0.{contig}.vcf",
     params:
-        sge_opts=config["grid_small"], 
+        grid_opts=config["grid_small"], 
     shell:"""
 mkdir -p vcfs
 freebayes -f {input.fasta}  -b {input.bam} --region {wildcards.contig} -m 10 --min-coverage 10 --max-coverage 40 -v {output.vcf} 
@@ -125,7 +125,7 @@ rule CallVariantsOnChromH1:
     output:
         vcf="vcfs/contigs.h1.{contig}.vcf",
     params:
-        sge_opts=config["grid_small"], 
+        grid_opts=config["grid_small"], 
     shell:"""
 mkdir -p vcfs
 freebayes -f {input.fasta} -b {input.bam} --region {wildcards.contig} -m 10 --min-coverage 10 --max-coverage 40 -v {output.vcf} 
@@ -137,7 +137,7 @@ freebayes -f {input.fasta} -b {input.bam} --region {wildcards.contig} -m 10 --mi
 #    output:
 #       vcf="index/contigs.{hap}.fasta.vcf",
 #    params:
-#       sge_opts=config["grid_small"]
+#       grid_opts=config["grid_small"]
 #    shell:"""
 #grep "^#" {input.invcf[0]} > {output.vcf}
 #cat {input.invcf} | grep -v "^#" | sort -k1,1 -k2,2n >> {output.vcf}
@@ -150,7 +150,7 @@ rule CombineVariantsH0:
     output:
        vcf="index/contigs.h0.fasta.vcf",
     params:
-       sge_opts=config["grid_small"]
+       grid_opts=config["grid_small"]
     shell:"""
 grep "^#" {input.invcf[0]} > {output.vcf}
 cat {input.invcf} | grep -v "^#" | sort -k1,1 -k2,2n >> {output.vcf}
@@ -163,7 +163,7 @@ rule CombineVariantsH1:
     output:
        vcf="index/contigs.h1.fasta.vcf",
     params:
-       sge_opts=config["grid_small"]
+       grid_opts=config["grid_small"]
     shell:"""
 grep "^#" {input.invcf[0]} > {output.vcf}
 cat {input.invcf} | grep -v "^#" | sort -k1,1 -k2,2n >> {output.vcf}
@@ -178,7 +178,7 @@ rule MapHTSReadsToContigs:
     output:
        bam=protected("index/contigs.h{hap}.fasta.bam"),
     params:
-       sge_opts=config["grid_bwa"],
+       grid_opts=config["grid_bwa"],
        fq1=GetFastq(config["fastq_1_fofn"]),
        fq2=GetFastq(config["fastq_2_fofn"])
     shell:"""
@@ -196,7 +196,7 @@ rule MakeMemIndex:
     output:
        bwt="index/contigs.h{hap}.fasta.bwt"
     params:
-       sge_opts=config["grid_large"]
+       grid_opts=config["grid_large"]
     shell:"""
 mkdir -p index
 cd index && ln -s ../{input.asm} . && cd ..
@@ -209,7 +209,7 @@ rule MakeIndels:
     output:
        indels="stitching_hap_gaps/hap{hap}/indels.orig.bed"
     params:
-       sge_opts=config["grid_small"],
+       grid_opts=config["grid_small"],
        sample=config["sample"],
        sd=SD,
        ref=config["ref"],
@@ -224,7 +224,7 @@ rule ConvertIndelBedToVCF:
     output:
         indelVCF="stitching_hap_gaps/hap{hap}/indels.orig.vcf"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         ref=config["ref"],
         sample=config["sample"]
     shell:"""
@@ -238,7 +238,7 @@ rule NormIndelVCF:
     output:
         indelNormVCF="stitching_hap_gaps/hap{hap}/indels.norm.vcf"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         ref=config["ref"],
     shell:"""
 vt normalize -r {params.ref} -o {output.indelNormVCF} {input.indelVCF}
@@ -250,7 +250,7 @@ rule NormIndelVCFToBed:
     output:
         indelNormBed="stitching_hap_gaps/hap{hap}/indels.norm.bed"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         ref=config["ref"],
     shell:"""
 {SD}/../sv/utils/variants_vcf_to_bed.py --vcf {input.indelNormVCF} --out {output.indelNormBed}
@@ -262,7 +262,7 @@ rule CombineHapIndels:
     output:
         indelBed="stitching_hap_gaps/diploid/indels.bed"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SD
     shell:"""
 {params.sd}/../sv/utils/MergeHaplotypes.sh {input.indelNormBed} {output.indelBed} "svType svLen svSeq" 0.8
@@ -274,7 +274,7 @@ rule MakeAnnotation:
     output:
         annotation="stitching_hap_gaps/diploid/insertions.bed"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
     shell:
         "make -f " + SD + "/DiploidAnnotation.mak H0SAM=contigs.h0.fasta.sam H1SAM=contigs.h1.fasta.sam DIR=stitching_hap_gaps -j 2"
     
@@ -284,7 +284,7 @@ rule MakeChrAsmFasta:
     output:
         asmFasta="contigs.{hap}.fasta"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
     shell:
         "cat {input.asmContig} > {output.asmFasta}"
 
@@ -294,7 +294,7 @@ rule MakeChrAsmFastaFai:
     output:
         asmFastaFai="contigs.{hap}.fasta.fai"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
     shell:
         "samtools faidx {input.asmFasta}"
     
@@ -305,7 +305,7 @@ rule MakeAsmAln:
     output:
         asmSam="contigs.{hap}.fasta.sam"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
     shell:
         "samtools view -H {input.aln} > {output.asmSam}; grep -h -v \"^@\" {input.asmContigs} >> {output.asmSam}"
     
@@ -316,7 +316,7 @@ rule MakeContigAsmAln:
     output:
         asmSam="contigs/patched.{hap}.{chrom}.fasta.sam"
     params:
-        sge_opts=config["grid_quad"],
+        grid_opts=config["grid_quad"],
     	ref=config['ref'],
         sd=SD,
         td=TMPDIR        
@@ -330,7 +330,7 @@ rule MakeChrAsmBed:
     output:
         asmBed="contigs.{hap}.fasta.sam.bed"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         hgsvg=SD+ "/.."
     shell:
         "{params.hgsvg}/mcutils/src/samToBed {input.asmSam}  --reportIdentity | bedtools sort > {output.asmBed}"
@@ -341,7 +341,7 @@ rule MakeChrAsmBed6:
     output:
         asmBed6="contigs.{hap}.fasta.sam.bed6"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
 	hgsvg=SD+ "/.."
     shell:
         "{params.hgsvg}/utils/tracks/SamBedToBed6.py {input.asmBed} {output.asmBed6} "
@@ -352,7 +352,7 @@ rule MakeAsmBB:
     output:
         asmBB="contigs.{hap}.fasta.sam.bb"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         ref=config['ref']
     shell:
         "bedToBigBed {input.asmBed} {params.ref}.fai {output.asmBB} -type=bed6"
@@ -366,7 +366,7 @@ rule MakeAsmContigs:
     output:
         asmContig="contigs/patched.{hap}.{chrom}.fasta"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SD
     shell:"""
 {params.sd}/PatchPaths.py {input.asmOverlap} {input.asmFasta} {input.asmPath} {output.asmContig}
@@ -379,7 +379,7 @@ rule MakeAsmPaths:
     output:
         asmPath="overlaps/overlap.{hap}.{chrom}.txt.path"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SD
     shell:"""
 {params.sd}/OverlapGraphToPaths.py {input.asmOverlap} {input.asmOverlapGraph} {output.asmPath}
@@ -392,7 +392,7 @@ rule MakeAsmGraphs:
     output:
         asmOverlapGraph="overlaps/overlap.{hap}.{chrom}.txt.gml"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SD
     shell:"""
 {params.sd}/OverlapsToGraph.py {input.asmOverlap} --out {output.asmOverlapGraph}
@@ -410,7 +410,7 @@ rule SplitAsmOverlaps:
     output:
         split=dynamic("overlaps/split_{chrom}/overlaps.{hap}.{chrom}.ctg0.{start}.bed"),
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SD,
         nOvp=config['overlapsPerJob']
     shell:"""
@@ -426,7 +426,7 @@ rule MakeSplitOverlaps:
     output:
         splitAsmOverlaps="overlaps/split_{chrom}/overlaps.{hap}.{chrom}.ctg0.{start}.txt"
     params:
-        sge_opts=config["grid_manycore"],
+        grid_opts=config["grid_manycore"],
         ovps=config["overlapsPerJob"],
         bl=config['blasr'],
         sd=SD
@@ -445,7 +445,7 @@ rule MakeAsmOverlaps:
     output:
         asmOverlap="overlaps/overlap.{hap}.{chrom}.txt"
     params:
-        sge_opts=config["grid_small"]
+        grid_opts=config["grid_small"]
     shell:
         "cat {input.splitAsmOverlaps} > {output.asmOverlap}"
 
@@ -455,7 +455,7 @@ rule MakeContigBed:
     output:
         contigBed = expand("overlaps/overlaps.{{hap}}.{chrom}.ctg0.bed",chrom=chroms)
     params:
-        sge_opts=config["grid_small"]
+        grid_opts=config["grid_small"]
 #
 # 
     shell:
@@ -472,7 +472,7 @@ rule MakeAsmBed:
     output:
         asmBed = "alignments.{hap}.bam.bed"
     params:
-        sge_opts=config["grid_small"]
+        grid_opts=config["grid_small"]
     shell:
         "samtools view {input.asmBam} | samToBed /dev/stdin --reportIdentity > {output.asmBed}"
 
@@ -482,7 +482,7 @@ rule MakeAsmFasta:
     output:
         asmFasta = "alignments.{hap}.bam.fasta"
     params:
-        sge_opts=config["grid_small"]
+        grid_opts=config["grid_small"]
     shell:
         "samtools view {input.asmBam} | awk '{{ print \">\"$1; print $10;}}' | fold | sed '/^$/d' > {output.asmFasta}; samtools faidx {output.asmFasta}"
 

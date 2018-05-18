@@ -5,9 +5,12 @@ usage()
 {
 cat << EOF
 		RunTrioTiledAssemblyOnRegions.sh regions paramfile 
-		-j job  Will submit jobs under this name to sge.
-		-a asm  The full path to the assembler makefile to use.
-    -d dir  Run in this directory
+		--vcf Trio phased vcf.
+		--fa  ID of father.
+    --mo  ID of mother.
+    --child ID of child.
+    --faBed output bed file for father.
+    --moBed outpub bed file for mother.    
 EOF
 exit 1
 

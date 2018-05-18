@@ -9,11 +9,12 @@ ap.add_argument("--vcf", help="VCF file.", required=True)
 ap.add_argument("--bionano", help="Convert bionano vcf", default=False, action='store_true')
 ap.add_argument("--operation", help="Specifically extract insertions or deletions.",default=None)
 ap.add_argument("--usesvlen", help="Add SVLen to end for insertion events.",default=False,action='store_true')
-ap.add_argument("--indv", help="Write for this individual", default=None)
+ap.add_argument("--indv", help="Write for this individual", default=None, nargs="+")
 ap.add_argument("--filter", help="Add filter value.",default=False,action='store_true')
 ap.add_argument("--gtfields", help="Add these genotype fields.", default=[], nargs="+")
 ap.add_argument("--fields", help="keep these fields", default=[], nargs="+")
 ap.add_argument("--groupCommas", help="Group INFO values separated by commas into the same key", action="store_true",default=False)
+ap.add_argument("--inferSVType", help="Infer SV type from ref/alt fields, rather than trying to look it up", default=False, action='store_true')
 ap.add_argument("--ignore-seqlen", help="Ignore length of the sequence when setting length of event",
                 action="store_true",
                 dest="ignoreSeqlen",
@@ -30,6 +31,15 @@ madeHeader = False
 fieldVal=re.compile("##INFO=<ID=([^,]+),.*")
 fields = []
 
+def InferSVType(ref, alt):
+    #
+    # This is wrong on multi-allelic calls, but there are few.
+    #
+    if (len(ref) > len(alt)):
+        return "deletion"
+    else:
+        return "insertion"    
+    
 def Tuple(kv):
     if "=" in kv:
         kvp = kv.split("=")
@@ -45,7 +55,12 @@ def GetOp(v):
         return "insertion"
     else:
         return "deletion"
-    
+allIndv={}
+indvOrder = []
+if args.indv is not None:
+    allIndv = { i: True for i in args.indv}
+    indvOrder = []
+
 for line in vcfFile:
     infoFields = []
     if line[0] == "#":
@@ -56,6 +71,16 @@ for line in vcfFile:
         if line[0:6] == "#CHROM" and args.indv is not None:
             vals    = line.split()
             samples = vals[9:]
+            sampleIndex= []
+            for s in range(0,len(samples)):
+                if samples[s] in allIndv:
+                    sampleIndex.append(s)
+                    indvOrder.append(samples[s])
+                    
+            if len(sampleIndex) == 0:
+                print "ERROR. Could not find sample " + args.indv
+                sys.exit(1)
+            
             sampleIndex= None
             for s in range(0,len(samples)):
                 if samples[s] == args.indv:
@@ -64,9 +89,6 @@ for line in vcfFile:
             if sampleIndex is None:
                 print "ERROR. Could not find sample " + args.indv
                 sys.exit(1)
-            
-                
-            
             
     else:
 
@@ -109,7 +131,7 @@ for line in vcfFile:
         if args.bionano is False:
             svLen = 0
             seq ="NONE"
-            
+            end=int(vals[1])
             if "SEQ" in infokv:
                 seq = infokv["SEQ"]
             if "SEQ" in infokv and args.ignoreSeqlen is False:
@@ -132,12 +154,17 @@ for line in vcfFile:
             elif "MERGE_TYPE" in infokv:
                 svType = infokv["MERGE_TYPE"]
             svOp = GetOp(vals[4])
+            if args.inferSVType:
+                svType = InferSVType(vals[3], vals[4])
+                
             if svOp == "deletion":
                 start = vals[1]
             else:
                 start = str(int(vals[1])-1)
             if "SVLEN" in infokv:
                 svLen =abs(int(infokv["SVLEN"]))
+            else:
+                svLen = abs(len(vals[3]) - len(vals[4]))
 
             if args.usesvlen:
                 if end == int(start) or end == int(start)+1:
@@ -166,7 +193,7 @@ for line in vcfFile:
                 header = ["chrom", "tStart", "tEnd", "svType", "svLen", "svQual"] 
 
             if args.indv is not None:
-                header += ["gt"]
+                header += [i for i in indvOrder]
 
             if args.filter is True:
                 header += ["FILTER"]
@@ -178,7 +205,7 @@ for line in vcfFile:
             madeHeader = True
 
         if args.indv is not None:
-            lineVals += [vals[9+sampleIndex]]
+            lineVals += [vals[9+i] for i in sampleIndex]
         if args.filter is True:
             lineVals += [vals[6]]
         if len(args.gtfields) > 0:

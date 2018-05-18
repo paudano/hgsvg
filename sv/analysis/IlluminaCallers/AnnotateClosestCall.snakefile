@@ -93,6 +93,7 @@ rule all:
         mergedintegratedvcfexonsrvis=expand("{sample}.merged_nonredundant_exon.{svtype}.bed.rvis", sample=config["sample"], svtype=svTypes),
         mergedintegratedvcfexonsrvistab=expand("{sample}.merged_nonredundant_exon.{svtype}.bed.rvis.tab", sample=config["sample"], svtype=svTypes),                
         decorateexons=expand("{sample}.exon_decorate.{svtype}.txt", sample=config["sample"], svtype=svTypes),
+        decorateexonsSummary=expand("{sample}.exon_decorate.{svtype}.txt.summary", sample=config["sample"], svtype=svTypes),        
         mergedIntegratedSummary=expand("{sample}.merged_nonredundant.{svtype}.bed.summary", sample=config["sample"], svtype=svTypes),
         mergedIntegratedReclassified=expand("{sample}.merged_nonredundant.{svtype}.bed.rec", sample=config["sample"], svtype=svTypes),        
         exonSummary=expand("{sample}.merged_nonredundant_exon_summary.{svtype}.bed",sample=config["sample"], svtype=svTypes),
@@ -146,9 +147,9 @@ rule all:
         UniqueExons=expand("excluding_simple_and_mei_exon.{op}.bed", op=svTypes),
         GainAnnotationSummary=expand("Gain_annotation_Summary.{op}.tab",op=svTypes),
         simpleReciprocal=expand("simple_reciprocal.{op}.bed",op=svTypes),
+        browsertrack=expand(config["sample"]+".{b}",b=["bed9","bb"])
         
         
-  
         
 
 localBams = { "0": config["localasm"][0], "1": config["localasm"][1] }
@@ -162,6 +163,35 @@ if "bn_read_cov" not in config:
 if "softclip" not in config:
     config["softclip"] = "NONE"
 
+rule MakeBB:
+    input:
+        svs=expand(config["sample"]+".merged_nonredundant.{op}.bed",op=svTypes),
+    output:
+        bed9=config["sample"]+".bed9",
+        bb=config["sample"]+".bb",
+    params:
+        ref=config["ref"]
+    shell:"""
+cat {input.svs} | bioawk -c hdr '{{ \
+ if ($svType == "deletion") {{ \
+   if ($union=="PacBio") {{ rgb="75,0,0";}} \
+   else if ($union=="Illumina") {{ rgb="0,75,0";}} \
+   else if ($union=="BioNano") {{ rgb="0,0,75";}} \
+   else if ($union=="PacBio,Illumina") {{ rgb="75,75,0";}} \
+   else if ($union=="PacBio,BioNano") {{ rgb="75,0,75";}} \
+   else if ($union=="Illumina,BioNano") {{ rgb="0,75,75";}} \
+   else if ($union=="All") {{ rgb="75,75,75";}} }}
+ else {{ \
+   if ($union=="PacBio") {{ rgb="255,0,0";}} \
+   else if ($union=="Illumina") {{ rgb="0,255,0";}} \
+   else if ($union=="BioNano") {{ rgb="0,0,255";}} \
+   else if ($union=="PacBio,Illumina") {{ rgb="255,255,0";}} \
+   else if ($union=="PacBio,BioNano") {{ rgb="255,0,255";}} \
+   else if ($union=="Illumina,BioNano") {{ rgb="0,255,255";}} \
+   else if ($union=="All") {{ rgb="255,255,255";}} }} \
+ print $1"\\t"$2"\\t"$3"\\t"$svType"-"$union"-"$hap"\\t1000\\t+\\t"$2"\\t"$3"\\t"rgb;}}' | bedtools sort > {output.bed9}
+ bedToBigBed {output.bed9} {params.ref}.fai {output.bb} -type=bed9
+"""
 
 rule SimpleReciprocal:
     input:
@@ -467,6 +497,7 @@ rule DecorateExonsSetdup:
         tr=config["sample"]+".merged_nonredundant_exon.{svtype}.bed.tr",        
     output:
         exon_decorate=config["sample"]+".exon_decorate.{svtype}.txt",
+        exon_decoratesummary=config["sample"]+".exon_decorate.{svtype}.txt.summary",        
     params:
         sge_opts=config["sge_small"],
         ref=config["ref"],
@@ -487,12 +518,16 @@ paste {params.sample}.exons.{wildcards.svtype}.segdup {input.tr}  > {output.exon
 #
 # Summarize all events.
 #
+
+# Segdup
 paste {input.exons} {output.exon_decorate} | bioawk -c hdr '{{ if (substr($0,0,1) == "#") {{ print "#union"; }} else {{ if ($frac_segdup > 0.5) {{ print $union;}} }} }}'  | {params.sd}/UnionTable.py --noHeader  > {output.exon_decorate}.summary.1
 
+    # Tandem repeat
 paste {input.exons} {output.exon_decorate} | bioawk -c hdr '{{ if (substr($0,0,1) == "#") {{ print "#union"; }} else {{ if ($frac_tr > 0.5) {{ print $union;}} }} }}'  | {params.sd}/UnionTable.py  --noHeader > {output.exon_decorate}.summary.2
 
-
+# exon segdup
 paste {input.exons} {output.exon_decorate} |  egrep "^#|EXON"  |  bioawk -c hdr '{{ if (substr($0,0,1) == "#") {{ print "#union"; }} else {{ if ($frac_segdup > 0.5) {{ print $union;}} }} }}'  | {params.sd}/UnionTable.py --noHeader  > {output.exon_decorate}.summary.3
+
 
 paste {input.exons} {output.exon_decorate} | egrep "^#|EXON" |  bioawk -c hdr '{{ if (substr($0,0,1) == "#") {{ print "#union"; }} else {{ if ($frac_tr > 0.5) {{ print $union;}} }} }}'  | {params.sd}/UnionTable.py  --noHeader > {output.exon_decorate}.summary.4
 
@@ -527,7 +562,7 @@ paste {output.exonSummary}.1 {output.exonSummary}.2 {output.exonSummary}.3 {outp
 rule MakeDecoratedExonSummary:
     input:
         exonSummary=config["sample"]+".merged_nonredundant_exon_summary.{svtype}.bed",
-        exon_decorate=config["sample"]+".exon_decorate.{svtype}.txt",
+        exon_decorate=config["sample"]+".exon_decorate.{svtype}.txt.summary",
     output:
         decorated=config["sample"]+".properties_of_unified_callset.{svtype}.bed",
     params:

@@ -510,7 +510,7 @@ def SpliceTestLine(svs):
 #    rsFile  = tempfile.NamedTemporaryFile(dir=args.tmpdir, suffix=".sam", delete=False, mode='w')
     dbsFile = tempfile.NamedTemporaryFile(dir=args.tmpdir, suffix=sSuffix, delete=False, mode='w')
     
-    commandOptions = " -maxMatch 25 -sdpMaxAnchorsPerPosition 5 -sdpTupleSize 10 -sam -bestn 1 -affineOpen 5 -affineExtend 5 -minAlignLength {} ".format(int(1.5*args.flank))
+    commandOptions = " -maxMatch 25 -sdpMaxAnchorsPerPosition 5 -sdpTupleSize 10 -sam -bestn 1 -affineOpen 5 -affineExtend 5 -nproc 8 -out /dev/stdout -minAlignLength {} ".format(int(1.5*args.flank))
 
     dbCommand = "{} {} {} -preserveReadTitle -clipping soft ".format(args.blasr, readsFile.name, dbFile.name, dbsFile.name) + commandOptions
     tempFileNames.append(dbsFile.name)

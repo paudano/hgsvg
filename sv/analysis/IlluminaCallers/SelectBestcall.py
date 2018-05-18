@@ -86,11 +86,14 @@ def Overlap(a, b):
     if a[1] < b[0] or a[0] > b[1]:
         return 0
     isect = min(a[1],b[1]) - max(a[0],b[0])
+<<<<<<< HEAD
     al=a[1]-a[0]
     bl=b[1]-b[0]
     if al > 0 and bl > 0:
         return min(float(al)/bl, float(bl)/al)
     
+=======
+>>>>>>> 41b294906ac6a16361dc998661faaeb5d4fe279b
     return isect/float((max(b[1]-b[0], a[1]-a[0])))
 
 matches=[]

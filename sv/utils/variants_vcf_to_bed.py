@@ -81,6 +81,15 @@ for line in vcfFile:
                 print "ERROR. Could not find sample " + args.indv
                 sys.exit(1)
             
+            sampleIndex= None
+            for s in range(0,len(samples)):
+                if samples[s] == args.indv:
+                    sampleIndex = s
+                    break
+            if sampleIndex is None:
+                print "ERROR. Could not find sample " + args.indv
+                sys.exit(1)
+            
     else:
 
         vals = line.split()
@@ -144,9 +153,6 @@ for line in vcfFile:
                 svType = infokv["SV_TYPE"]
             elif "MERGE_TYPE" in infokv:
                 svType = infokv["MERGE_TYPE"]
-
-
-                
             svOp = GetOp(vals[4])
             if args.inferSVType:
                 svType = InferSVType(vals[3], vals[4])
@@ -163,7 +169,6 @@ for line in vcfFile:
             if args.usesvlen:
                 if end == int(start) or end == int(start)+1:
                     end=int(start)+svLen
-                
 
                 
             lineVals = [vals[0], start, str(end), svType, str(svLen), seq]
@@ -200,7 +205,6 @@ for line in vcfFile:
             madeHeader = True
 
         if args.indv is not None:
-            
             lineVals += [vals[9+i] for i in sampleIndex]
         if args.filter is True:
             lineVals += [vals[6]]

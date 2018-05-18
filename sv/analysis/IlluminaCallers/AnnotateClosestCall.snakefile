@@ -151,6 +151,7 @@ rule all:
         
         
         
+        
 
 localBams = { "0": config["localasm"][0], "1": config["localasm"][1] }
 if "bn_read_overlap" not in config:
@@ -528,6 +529,12 @@ paste {input.exons} {output.exon_decorate} | bioawk -c hdr '{{ if (substr($0,0,1
 # exon segdup
 paste {input.exons} {output.exon_decorate} |  egrep "^#|EXON"  |  bioawk -c hdr '{{ if (substr($0,0,1) == "#") {{ print "#union"; }} else {{ if ($frac_segdup > 0.5) {{ print $union;}} }} }}'  | {params.sd}/UnionTable.py --noHeader  > {output.exon_decorate}.summary.3
 
+paste {input.exons} {output.exon_decorate} | bioawk -c hdr '{{ if (substr($0,0,1) == "#") {{ print "#union"; }} else {{ if ($frac_segdup > 0.5) {{ print $union;}} }} }}'  | {params.sd}/UnionTable.py --noHeader  > {output.exon_decorate}.summary.1
+
+paste {input.exons} {output.exon_decorate} | bioawk -c hdr '{{ if (substr($0,0,1) == "#") {{ print "#union"; }} else {{ if ($frac_tr > 0.5) {{ print $union;}} }} }}'  | {params.sd}/UnionTable.py  --noHeader > {output.exon_decorate}.summary.2
+
+
+paste {input.exons} {output.exon_decorate} |  egrep "^#|EXON"  |  bioawk -c hdr '{{ if (substr($0,0,1) == "#") {{ print "#union"; }} else {{ if ($frac_segdup > 0.5) {{ print $union;}} }} }}'  | {params.sd}/UnionTable.py --noHeader  > {output.exon_decorate}.summary.3
 
 paste {input.exons} {output.exon_decorate} | egrep "^#|EXON" |  bioawk -c hdr '{{ if (substr($0,0,1) == "#") {{ print "#union"; }} else {{ if ($frac_tr > 0.5) {{ print $union;}} }} }}'  | {params.sd}/UnionTable.py  --noHeader > {output.exon_decorate}.summary.4
 
@@ -563,6 +570,7 @@ rule MakeDecoratedExonSummary:
     input:
         exonSummary=config["sample"]+".merged_nonredundant_exon_summary.{svtype}.bed",
         exon_decorate=config["sample"]+".exon_decorate.{svtype}.txt.summary",
+        exon_decorate=config["sample"]+".exon_decorate.{svtype}.txt",
     output:
         decorated=config["sample"]+".properties_of_unified_callset.{svtype}.bed",
     params:

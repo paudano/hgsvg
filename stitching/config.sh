@@ -2,10 +2,8 @@
 #
 # Add any custom modifications to nonstandard software locations
 #
+source /home/cmb-16/mjc/projects/phased-sv/phasedsv/environments/python2.7/bin/activate
 
-source /net/eichler/vol5/home/mchaisso/environments/python27/bin/activate
 
-module load pysam/latest
-
-export PATH=$HOME/software/bin:$PATH
+export PATH=/home/cmb-16/mjc/shared/bin:$PATH
 

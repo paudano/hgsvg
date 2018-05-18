@@ -40,7 +40,7 @@ config["fastq_2_fofn"] = "NA"
 
 rule all:
     input:
-        alnFofn     = "alignments.fofn"
+        alnFofn     = "alignments.fofn",
         alnSam      = expand("alignments.{hap}.sam", hap=haps),
         alnBam      = expand("alignments.{hap}.bam", hap=haps),
         asmBed      = expand("alignments.{hap}.bam.bed", hap=haps),
@@ -64,15 +64,36 @@ rule all:
         normVCF     = expand("stitching_hap_gaps/hap{hap}/indels.norm.vcf",hap=shortHaps),
         normBed     = expand("stitching_hap_gaps/hap{hap}/indels.norm.bed",hap=shortHaps),                
 
-
-rule MakeAlnBam:
+rule MakeFofn:
     input:
     output:
-        bams=expand("alignments.{hap}.sam",hap=haps)
+        fofn="alignments.fofn"
+    shell:"""
+ls samfiles | awk '{{ print "samfiles/"$1;}}' > {output.fofn}
+"""
+
+rule MakeAlnSam:
+    input:
+        fofn="alignments.fofn"
+    output:
+        sams=expand("alignments.{hap}.sam",hap=haps)
     params:
         sd=SD,
     shell:"""
+{params.sd}/FilterSamByHaplotype.py {input.fofn} --h0 {output.sams[0]} --h1 {output.sams[1]} --header {params.sd}/header.sam
+"""
 
+
+rule MakeAlnBam:
+    input:
+        sam="alignments.{hap}.sam",
+    output:
+        bam="alignments.{hap}.bam",
+    params:
+        sd=SD,
+    shell:"""
+samtools view -bS {input.sam} | samtools sort -T $TMPDIR/tmp.{wildcards.hap}.sam -o {output.bam}
+samtools index {output.bam}
 """
 
 rule ApplyPolish:

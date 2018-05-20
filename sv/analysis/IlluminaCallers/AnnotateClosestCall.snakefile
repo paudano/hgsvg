@@ -87,6 +87,7 @@ rule all:
         mergedortho=expand("merged_ortho.{svtype}.bed",svtype=svTypes),
         mergedintegrated=expand("{sample}.merged_nonredundant.{svtype}.bed", sample=config["sample"], svtype=svTypes),
         mergedintegratedvcf=expand("{sample}.merged_nonredundant.{svtype}.vcf", sample=config["sample"], svtype=svTypes),
+        combinedvcf=expand("{sample}.merged_nonredundant.vcf", sample=config["sample"]),        
         mergedintegratedvcfexonstr=expand("{sample}.merged_nonredundant_exon.{svtype}.bed", sample=config["sample"], svtype=svTypes),
         mergedintegratedvcfexonsmerged=expand("{sample}.merged_nonredundant_exon.{svtype}.bed.tr", sample=config["sample"], svtype=svTypes),
         mergedintegratedvcfexons=expand("{sample}.merged_nonredundant_exon.{svtype}.bed.merged", sample=config["sample"], svtype=svTypes),                
@@ -570,7 +571,6 @@ rule MakeDecoratedExonSummary:
     input:
         exonSummary=config["sample"]+".merged_nonredundant_exon_summary.{svtype}.bed",
         exon_decorate=config["sample"]+".exon_decorate.{svtype}.txt.summary",
-        exon_decorate=config["sample"]+".exon_decorate.{svtype}.txt",
     output:
         decorated=config["sample"]+".properties_of_unified_callset.{svtype}.bed",
     params:
@@ -934,7 +934,7 @@ rule IntegratedFilter:
         svtype=lambda wildcards: wildcards.svtype
     shell:"""
 if [ {params.svtype} == "DEL" ]; then 
-   paste {input.intPbSup} {input.intBnSup} {input.readOvp} {input.intcov} {input.sup} | bioawk -c hdr '{{ if (NR==1) {{ print "orth_filter";}} else {{ if (($number >= 3) || $pbbest > 0.25 || $bnoverlap > 0.25 || $coverage < 15 || $nSupport > 3) {{print "PASS";}} else {{ print "FAIL";}} }} }}' > {output.intPass}
+   paste {input.intPbSup} {input.intBnSup} {input.readOvp} {input.intcov} {input.sup} | bioawk -c hdr '{{ if (NR==1) {{ print "orth_filter";}} else {{ if (($number >= 3) || $pbbest > 0.25 || $bnoverlap > 0.25 || $coverage < 25 || $nSupport > 3) {{print "PASS";}} else {{ print "FAIL";}} }} }}' > {output.intPass}
 else
    paste {input.intPbSup} {input.intBnSup} {input.readOvp} {input.intcov} {input.sup} | bioawk -c hdr '{{ if (NR==1) {{ print "orth_filter";}} else {{ if (($number >= 3) || $pbbest > 0.25 || $bnoverlap > 0.25 || $nSupport > 3) {{print "PASS";}} else {{ print "FAIL";}} }} }}' > {output.intPass}
 fi
@@ -1820,3 +1820,11 @@ rule GetTFBSAblation:
 """
         
         
+rule MakeCombinedVCF:
+    input:
+        mnr=expand("{sample}.merged_nonredundant.{svtype}.vcf", sample=config["sample"], svtype=svTypes),
+    output:
+        comb=config["sample"] + ".merged_nonredundant.vcf"
+    shell:"""
+cat <( grep "^#" {input.mnr[0]} ) <( grep -v "^#" {input.mnr[0]} | sort -k1,1 -k2,2n ) <( grep -v "^#" {input.mnr[1]} | sort -k1,1 -k2,2n ) > {output.comb}
+"""

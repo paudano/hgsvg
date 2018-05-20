@@ -31,10 +31,6 @@ for header in headers[1:]:
             masterHeader.append(v)
 
 out.write("#"+ "\t".join(masterHeader)+ "\n")
-<<<<<<< HEAD
-out.flush()
-=======
->>>>>>> 41b294906ac6a16361dc998661faaeb5d4fe279b
 for fi in range(0, len(files)):
     #
     # Determine the order to write the values

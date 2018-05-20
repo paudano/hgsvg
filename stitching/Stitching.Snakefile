@@ -30,7 +30,7 @@ chroms = [l.split()[0].rstrip() for l in faiFile]
 SD = os.path.dirname(workflow.snakefile)
 cwd=os.getcwd()
 
-shell.prefix(". {SD}/config.sh; ")
+shell.prefix("source {SD}/config.sh; ")
 
 haps=["h0","h1"]
 shortHaps=["0", "1"]
@@ -59,10 +59,25 @@ rule all:
         chrBed      = expand("contigs.{hap}.fasta.sam.bed", hap=haps),
 	chrBed6     = expand("contigs.{hap}.fasta.sam.bed6", hap=haps),
 	chrBB       = expand("contigs.{hap}.fasta.sam.bb", hap=haps),
+        gaps        = expand("stitching_hap_gaps/hap{hap}/gaps.bed", hap=shortHaps),
         indels      = expand("stitching_hap_gaps/hap{hap}/indels.orig.bed", hap=shortHaps),
         indelVCF    = expand("stitching_hap_gaps/hap{hap}/indels.orig.vcf",hap=shortHaps),
         normVCF     = expand("stitching_hap_gaps/hap{hap}/indels.norm.vcf",hap=shortHaps),
         normBed     = expand("stitching_hap_gaps/hap{hap}/indels.norm.bed",hap=shortHaps),                
+
+
+rule PrintGaps:
+    input:
+        contigSam="contigs.h{hap}.fasta.sam"
+    output:
+        gapBed="stitching_hap_gaps/hap{hap}/gaps.bed"
+    params:
+        sd=SD,
+        ref=config["ref"]
+    shell:"""
+mkdir -p stitching_hap_gaps/hap{wildcards.hap}
+{params.sd}/../sv/utils/PrintGaps.py {params.ref} {input.contigSam} --condense 20 --minLength 50 --outFile {output.gapBed}
+"""
 
 rule MakeFofn:
     input:
@@ -362,7 +377,7 @@ rule MakeContigAsmAln:
         sd=SD,
         td=TMPDIR        
     shell:"""
-{params.sd}/MapContigs.py --contigs {input.asmFasta} --ref {params.ref} --tmpdir $TMPDIR --blasr blasr --out {output.asmSam} --nproc 4
+{params.sd}/MapContigs.py --contigs {input.asmFasta} --ref {params.ref} --tmpdir $TMPDIR --blasr {params.sd}/..//blasr/alignment/bin/blasr --out {output.asmSam} --nproc 4
 """
 
 rule MakeChrAsmBed:
@@ -374,7 +389,7 @@ rule MakeChrAsmBed:
         grid_opts=config["grid_small"],
         hgsvg=SD+ "/.."
     shell:
-        "{params.hgsvg}/mcutils/src/samToBed {input.asmSam}  --reportIdentity | bedtools sort > {output.asmBed}"
+        "{params.hgsvg}/mcutils/src/samToBed {input.asmSam}  --reportIdentity | bedtools sort  > {output.asmBed}"
 
 rule MakeChrAsmBed6:
     input:
@@ -471,9 +486,6 @@ rule MakeSplitOverlaps:
         ovps=config["overlapsPerJob"],
         sd=SD
     shell:"""
-
-echo $PYTHONPATH
-which python
 mkdir -p $TMPDIR ; mkdir -p overlaps/split_{wildcards.chrom}; {params.sd}/OverlapContigsOrderedByBed.py {input.bed} {input.asm} --chrom {wildcards.chrom} --out {output.splitAsmOverlaps} --nproc 12 --tmpdir $TMPDIR --blasr {params.sd}/../blasr/alignment/bin/blasr --path {params.sd}
 """
 

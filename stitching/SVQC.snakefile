@@ -142,7 +142,12 @@ rule SplitGaps:
         sd=SNAKEMAKE_DIR,
         gd=gapdir
     shell:"""
-module unload anaconda; module load python/2.7.3; mkdir -p {params.gd}/hap{wildcards.hap}/split;  {params.sd}/RecallRegionsInGapBed.py --asm {input.asm} --ref {params.ref} --gaps {input.gaps} --split {params.n} --splitDir {params.gd}/hap{wildcards.hap}/split
+mkdir -p {params.gd}/hap{wildcards.hap}/split;
+{params.sd}/RecallRegionsInGapBed.py --asm {input.asm} \
+                                     --ref {params.ref} \
+                                     --gaps {input.gaps} \
+                                     --split {params.n} \
+                                     --splitDir {params.gd}/hap{wildcards.hap}/split
 """
 
 
@@ -162,8 +167,8 @@ rule RecallGaps:
         sd=SNAKEMAKE_DIR,
         gapdir=gapdir
     shell:"""
-module unload anaconda;
-module load python/2.7.3;
+
+
 mkdir -p {params.gapdir}/hap{wildcards.hap};
 mkdir -p {params.gapdir}/hap{wildcards.hap}/indels;
 if [ {params.do_recall} != "no" ]; then
@@ -217,7 +222,6 @@ rule SplicedPBSupport:
         pbSupport=gapdir+"/hap{hap}/split/gaps.recalled_support.{id}"
     shell:"""
 
-module unload anaconda; module load python/2.7.3;
 bedtools sort -header -i {input.gaps} > {input.gaps}.tmp
 mv -f {input.gaps}.tmp {input.gaps}
 mkdir -p {params.gapdir}/hap{wildcards.hap};
@@ -265,8 +269,9 @@ rule SortRecallGaps:
         recalledSorted="{gapdir}/hap{hap}/gaps.recalled.sorted"
     params:
         sge_opts="-pe serial 1 -l mfree=4G -l h_rt=01:00:00 -l disk_free=4G"
-    shell:
-        "module unload anaconda; module load bedtools/latest; bedtools sort -header -i {input.recalled} > {output.recalledSorted}"
+    shell:"""
+bedtools sort -header -i {input.recalled} > {output.recalledSorted}
+"""
 
 
 rule FilterRecalledGaps:
@@ -506,7 +511,7 @@ rule SortRecalledRegions:
     
 rule CollectRetainedIndels:
     input:
-        stitchIndels="stitching_hap_gaps/hap{hap}/indels.bed",
+        stitchIndels="stitching_hap_gaps/hap{hap}/indels.norm.bed",
         recalledRegions="SVQC/hap{hap}/regions.recalled.ref.sorted"
     output:
         retainedIndels="SVQC/hap{hap}/indels.retained.bed",
@@ -556,7 +561,7 @@ rule ConvertIndelBedToVCF:
         ref=config["ref"],
         sample=config["sample"]
     shell:"""
-module unload python/3.5.2; module load python/2.7.3; module load numpy/1.11.0; module load bedtools/latest; module load pandas && {SNAKEMAKE_DIR}/../sv/utils/variants_bed_to_vcf.py --bed {input.mergedRetained} --ref {params.ref} --sample {params.sample} --type indel --vcf /dev/stdout | bedtools sort -header > {output.mergedRetainedVCF}
+{SNAKEMAKE_DIR}/../sv/utils/variants_bed_to_vcf.py --bed {input.mergedRetained} --ref {params.ref} --sample {params.sample} --type indel --vcf /dev/stdout | bedtools sort -header > {output.mergedRetainedVCF}
 """
 
 rule NormIndelVCF:
@@ -580,7 +585,7 @@ rule NormIndelVCFToBed:
         sge_opts="-pe serial 1 -l mfree=2G -l h_rt=04:00:00 -l disk_free=4G",
         ref=config["ref"],
     shell:"""
-module unload python/3.5.2; module load python/2.7.3; module load numpy/1.11.0; module load bedtools/latest; module load pandas ; {SNAKEMAKE_DIR}/../sv/utils/variants_vcf_to_bed.py --vcf {input.vcf} --out {output.bed}
+{SNAKEMAKE_DIR}/../sv/utils/variants_vcf_to_bed.py --vcf {input.vcf} --out {output.bed}
 """
     
 rule SplitNormBed:
@@ -853,7 +858,6 @@ rule FillInSupport:
         bams=config["bams"],
         sd=SNAKEMAKE_DIR
     shell:"""
-module unload anaconda; module load python/2.7.3;
 {params.sd}/../sv/utils/SpliceVariantsAndCoverageValidate.py --blasr {params.sd}/../blasr/alignment/bin/blasr --gaps {input.fillIn} --ref {params.ref} --reads {params.bams} --window 250 --flank 1000 --out {output.fillInCov} --nproc 8 --blasr {params.sd}/../blasr/alignment/bin/blasr 
 """
 
@@ -933,10 +937,6 @@ rule MakeMergedBed:
     params:
         sge_opts="-cwd -pe serial 1 -l mfree=4G -l h_rt=04:00:00 -l disk_free=4G",
     shell:"""
-module unload anaconda
-module load python/2.7.3
-module load numpy/1.11.0
-module load pandas
 mkdir -p merged
 bedtools intersect -header -v -a {input.fillinBed} -b {input.svqcBed} > merged/fill-in.bed
 head -1 merged/fill-in.bed | awk '{{ print $0"\\tsource";}}' > merged/fill-in.bed.src
@@ -962,8 +962,8 @@ rule MakeMergedVCF:
         sge_opts="-cwd -pe serial 1 -l mfree=4G -l h_rt=04:00:00 -l disk_free=4G",
         ref=config["ref"], 
         sample=config["sample"]
-    shell:
-        "module unload anaconda; module load python/2.7.3; module load numpy/1.11.0; module load bedtools/latest; module load pandas && {SNAKEMAKE_DIR}/../sv/utils/variants_bed_to_vcf.py --bed {input.mergedBed} --ref {params.ref} --sample {params.sample} --type sv --vcf /dev/stdout --fields NALT nAlt NREF nRef SRC source | bedtools sort -header > {output.mergedVCF}"
+    shell:"""
+{SNAKEMAKE_DIR}/../sv/utils/variants_bed_to_vcf.py --bed {input.mergedBed} --ref {params.ref} --sample {params.sample} --type sv --vcf /dev/stdout --fields NALT nAlt NREF nRef SRC source | bedtools sort -header > {output.mergedVCF}"""
 
 
 rule MakeSampleVCF:

@@ -30,34 +30,86 @@ chroms = [l.split()[0].rstrip() for l in faiFile]
 SD = os.path.dirname(workflow.snakefile)
 cwd=os.getcwd()
 
-shell.prefix(". {SD}/config.sh; ")
+shell.prefix("source {SD}/config.sh; ")
 
 haps=["h0","h1"]
 shortHaps=["0", "1"]
+
+config["fastq_1_fofn"] = "NA"
+config["fastq_2_fofn"] = "NA"
+
 rule all:
     input:
-        asmBed      = expand("{base}.{hap}.bam.bed",base=config['alnBase'], hap=haps),
+        alnFofn     = "alignments.fofn",
+        alnSam      = expand("alignments.{hap}.sam", hap=haps),
+        alnBam      = expand("alignments.{hap}.bam", hap=haps),
+        asmBed      = expand("alignments.{hap}.bam.bed", hap=haps),
         contigBed   = expand("overlaps/overlaps.{hap}.{chrom}.ctg0.bed",hap=haps,chrom=chroms),
-        asmFasta    = expand("{base}.{hap}.bam.fasta", base=config['alnBase'], hap=haps),
+        asmFasta    = expand("alignments.{hap}.bam.fasta", hap=haps),
         asmOverlaps = expand("overlaps/overlap.{hap}.{chrom}.txt", hap=haps, chrom=chroms),
         asmGraphs   = expand("overlaps/overlap.{hap}.{chrom}.txt.gml", hap=haps, chrom=chroms),
         asmPaths    = expand("overlaps/overlap.{hap}.{chrom}.txt.path", hap=haps, chrom=chroms),
         asmContigs  = expand("contigs/patched.{hap}.{chrom}.fasta", hap=haps, chrom=chroms),
 	chrFasta    = expand("contigs.{hap}.fasta", hap=haps),
 	chrFastaFai = expand("contigs.{hap}.fasta.fai", hap=haps),
-        chrMemIndex = expand("index/contigs.{hap}.fasta.bwt", hap=haps),
-        chrReadAln  = expand("index/contigs.{hap}.fasta.bam", hap=haps),
-        contigHtsVCF= expand("index/contigs.{hap}.fasta.vcf", hap=haps),
-#	chrAln      = expand("contigs.{hap}.fasta.sam", hap=haps),
-#        chrBed      = expand("contigs.{hap}.fasta.sam.bed", hap=haps),
-#	chrBed6     = expand("contigs.{hap}.fasta.sam.bed6", hap=haps),
-#	chrBB       = expand("contigs.{hap}.fasta.sam.bb", hap=haps),
-#        indels      = expand("stitching_hap_gaps/hap{hap}/indels.orig.bed", hap=shortHaps),
-#        indelVCF    = expand("stitching_hap_gaps/hap{hap}/indels.orig.vcf",hap=shortHaps),
-#        normVCF     = expand("stitching_hap_gaps/hap{hap}/indels.norm.vcf",hap=shortHaps),
-#        normBed     = expand("stitching_hap_gaps/hap{hap}/indels.norm.bed",hap=shortHaps),                
-#        annotation  = "stitching_hap_gaps/diploid/insertions.bed",
-#        indelBed    ="stitching_hap_gaps/diploid/indels.bed"
+#        chrMemIndex = expand("index/contigs.{hap}.fasta.bwt", hap=haps),
+#        chrReadAln  = expand("index/contigs.{hap}.fasta.bam", hap=haps),
+#        contigHtsVCF= expand("index/contigs.{hap}.fasta.vcf", hap=haps),
+	chrAln      = expand("contigs.{hap}.fasta.sam", hap=haps),
+        chrBed      = expand("contigs.{hap}.fasta.sam.bed", hap=haps),
+	chrBed6     = expand("contigs.{hap}.fasta.sam.bed6", hap=haps),
+	chrBB       = expand("contigs.{hap}.fasta.sam.bb", hap=haps),
+        gaps        = expand("stitching_hap_gaps/hap{hap}/gaps.bed", hap=shortHaps),
+        indels      = expand("stitching_hap_gaps/hap{hap}/indels.orig.bed", hap=shortHaps),
+        indelVCF    = expand("stitching_hap_gaps/hap{hap}/indels.orig.vcf",hap=shortHaps),
+        normVCF     = expand("stitching_hap_gaps/hap{hap}/indels.norm.vcf",hap=shortHaps),
+        normBed     = expand("stitching_hap_gaps/hap{hap}/indels.norm.bed",hap=shortHaps),                
+
+
+rule PrintGaps:
+    input:
+        contigSam="contigs.h{hap}.fasta.sam"
+    output:
+        gapBed="stitching_hap_gaps/hap{hap}/gaps.bed"
+    params:
+        sd=SD,
+        ref=config["ref"]
+    shell:"""
+mkdir -p stitching_hap_gaps/hap{wildcards.hap}
+{params.sd}/../sv/utils/PrintGaps.py {params.ref} {input.contigSam} --condense 20 --minLength 50 --outFile {output.gapBed}
+"""
+
+rule MakeFofn:
+    input:
+    output:
+        fofn="alignments.fofn"
+    shell:"""
+ls samfiles | awk '{{ print "samfiles/"$1;}}' > {output.fofn}
+"""
+
+rule MakeAlnSam:
+    input:
+        fofn="alignments.fofn"
+    output:
+        sams=expand("alignments.{hap}.sam",hap=haps)
+    params:
+        sd=SD,
+    shell:"""
+{params.sd}/FilterSamByHaplotype.py {input.fofn} --h0 {output.sams[0]} --h1 {output.sams[1]} --header {params.sd}/header.sam
+"""
+
+
+rule MakeAlnBam:
+    input:
+        sam="alignments.{hap}.sam",
+    output:
+        bam="alignments.{hap}.bam",
+    params:
+        sd=SD,
+    shell:"""
+samtools view -bS {input.sam} | samtools sort -T $TMPDIR/tmp.{wildcards.hap}.sam -o {output.bam}
+samtools index {output.bam}
+"""
 
 rule ApplyPolish:
     input:
@@ -131,6 +183,8 @@ mkdir -p vcfs
 freebayes -f {input.fasta} -b {input.bam} --region {wildcards.contig} -m 10 --min-coverage 10 --max-coverage 40 -v {output.vcf} 
 """
 
+
+
 #rule CombineVariants:
 #    input:
 #       invcf=dynamic("vcfs/contigs.h1.{contig}.vcf"),
@@ -143,6 +197,7 @@ freebayes -f {input.fasta} -b {input.bam} --region {wildcards.contig} -m 10 --mi
 #cat {input.invcf} | grep -v "^#" | sort -k1,1 -k2,2n >> {output.vcf}
 #"""
 #
+
 
 rule CombineVariantsH0:
     input:
@@ -178,14 +233,15 @@ rule MapHTSReadsToContigs:
     output:
        bam=protected("index/contigs.h{hap}.fasta.bam"),
     params:
-       grid_opts=config["grid_bwa"],
-       fq1=GetFastq(config["fastq_1_fofn"]),
-       fq2=GetFastq(config["fastq_2_fofn"])
+       sge_opts=config["grid_manycore"],
+#       fq1=GetFastq(config["fastq_1_fofn"]),
+#       fq2=GetFastq(config["fastq_2_fofn"])
     shell:"""
-bwa mem -t 10 index/{input.asm}  '<zcat {params.fq1}' '<zcat {params.fq2}' | \
-  samtools view -bS - | \
-  samtools sort -m2G -@ 4 -T $TMPDIR/aln -o {output.bam}
 """
+#bwa mem -t 10 index/{input.asm}  '<zcat {params.fq1}' '<zcat {params.fq2}' | \
+#  samtools view -bS - | \
+#  samtools sort -m2G -@ 4 -T $TMPDIR/aln -o {output.bam}
+
 
      
 
@@ -321,7 +377,7 @@ rule MakeContigAsmAln:
         sd=SD,
         td=TMPDIR        
     shell:"""
-{params.sd}/MapContigs.py --contigs {input.asmFasta} --ref {params.ref} --tmpdir $TMPDIR --blasr blasr --out {output.asmSam} --nproc 4
+{params.sd}/MapContigs.py --contigs {input.asmFasta} --ref {params.ref} --tmpdir $TMPDIR --blasr {params.sd}/..//blasr/alignment/bin/blasr --out {output.asmSam} --nproc 4
 """
 
 rule MakeChrAsmBed:
@@ -333,7 +389,7 @@ rule MakeChrAsmBed:
         grid_opts=config["grid_small"],
         hgsvg=SD+ "/.."
     shell:
-        "{params.hgsvg}/mcutils/src/samToBed {input.asmSam}  --reportIdentity | bedtools sort > {output.asmBed}"
+        "{params.hgsvg}/mcutils/src/samToBed {input.asmSam}  --reportIdentity | bedtools sort  > {output.asmBed}"
 
 rule MakeChrAsmBed6:
     input:
@@ -428,13 +484,9 @@ rule MakeSplitOverlaps:
     params:
         grid_opts=config["grid_manycore"],
         ovps=config["overlapsPerJob"],
-        bl=config['blasr'],
         sd=SD
     shell:"""
-
-echo $PYTHONPATH
-which python
-mkdir -p $TMPDIR ; mkdir -p overlaps/split_{wildcards.chrom}; {params.sd}/OverlapContigsOrderedByBed.py {input.bed} {input.asm} --chrom {wildcards.chrom} --out {output.splitAsmOverlaps} --nproc 12 --tmpdir $TMPDIR --blasr {params.bl} --path {params.sd}
+mkdir -p $TMPDIR ; mkdir -p overlaps/split_{wildcards.chrom}; {params.sd}/OverlapContigsOrderedByBed.py {input.bed} {input.asm} --chrom {wildcards.chrom} --out {output.splitAsmOverlaps} --nproc 12 --tmpdir $TMPDIR --blasr {params.sd}/../blasr/alignment/bin/blasr --path {params.sd}
 """
 
 rule MakeAsmOverlaps:

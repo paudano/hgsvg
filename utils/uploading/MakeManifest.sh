@@ -4,4 +4,4 @@ if [ "$#" -ne 2 ]; then
    exit 1
 fi
 echo $1 >> /dev/stderr
-~mchaisso/software/gca-tools/submissions/file-manifest $1 > $2
+file-manifest $1 > $2

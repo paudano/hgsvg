@@ -293,8 +293,8 @@ def CompareHaplotypes(a, b, care=False):
         return True
     else:
         return a.hap == b.hap
-import pdb
-pdb.set_trace()
+
+
 
 while i < len(gaps):
     svClusters.append([])
@@ -309,8 +309,8 @@ while i < len(gaps):
         i+=1
         svClusters[-1].append(gaps[i])
     i+=1
-import pdb
-pdb.set_trace()
+
+
 
 if args.split is not None:
     sStart = 0

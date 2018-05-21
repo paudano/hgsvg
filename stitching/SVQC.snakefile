@@ -66,7 +66,7 @@ rule all:
         gapsNoClust=expand("{gapdir}/hap{hap}/gaps.recalled.noclust",gapdir=gapdir,hap=haps),
         trClusterCalls=gapdir+"/tr_clusters.calls.bed",
         indels=expand("SVQC/hap{hap}/indels_local.bed",hap=haps),
-        indels_op=expand("SVQC/hap{hap}/indels_local.{op}.bed",hap=haps, op=ops)
+        indels_op=expand("SVQC/hap{hap}/indels_local.{op}.bed",hap=haps, op=ops),
 rule CreateClusterCalls:
     input:
         reCalledFiltered=gapdir+"/hap{hap}/gaps.recalled.filt",
@@ -148,6 +148,7 @@ mkdir -p {params.gd}/hap{wildcards.hap}/split;
                                      --gaps {input.gaps} \
                                      --split {params.n} \
                                      --splitDir {params.gd}/hap{wildcards.hap}/split
+
 """
 
 
@@ -171,7 +172,7 @@ rule RecallGaps:
 
 mkdir -p {params.gapdir}/hap{wildcards.hap};
 mkdir -p {params.gapdir}/hap{wildcards.hap}/indels;
-if [ {params.do_recall} != "no" ]; then
+if [ {params.do_recall} == "yes" ]; then
   {params.sd}/RecallRegionsInGapBed.py --asm {input.asm} --ref {params.ref} --gaps {input.gaps} --out {output.recalled} --nproc 12 --refRegions {params.gapdir}/hap{wildcards.hap}/split/regions.recalled.ref.{wildcards.id} --ngmlr {params.ngmlr_cutoff} --indels {output.recalled}.indel.bed --indelDir {params.gapdir}/hap{wildcards.hap}/indels --blasr {params.sd}/../blasr/alignment/bin/blasr
 else
   cp {input.gaps} {output.recalled}
@@ -205,8 +206,8 @@ rule MergeRetainedAndRecalledIndels:
     params:
         sge_opts="-pe serial 1 -l mfree=2G -l h_rt=04:00:00 -l disk_free=4G",
     shell:"""
-head -1 {input.indelBed} > {output.mergedRetained}
-cat {input.indelBed} {input.retainedIndels} | cut -f 1-10 | grep -v "^#" | bedtools sort >> {output.mergedRetained}
+head -1 {input.indelBed} | cut -f 1-6 > {output.mergedRetained}
+cat {input.indelBed} {input.retainedIndels} | cut -f 1-6 | grep -v "^#" | bedtools sort >> {output.mergedRetained}
 """
     
 rule SplicedPBSupport:

@@ -362,8 +362,10 @@ rule MakeAsmAln:
         asmSam="contigs.{hap}.fasta.sam"
     params:
         grid_opts=config["grid_small"],
-    shell:
-        "samtools view -H {input.aln} > {output.asmSam}; grep -h -v \"^@\" {input.asmContigs} >> {output.asmSam}"
+    shell:"""
+samtools view -H {input.aln} > {output.asmSam}
+grep -h -v \"^@\" {input.asmContigs} >> {output.asmSam}
+"""
     
     
 rule MakeContigAsmAln:
@@ -380,6 +382,8 @@ rule MakeContigAsmAln:
 {params.sd}/MapContigs.py --contigs {input.asmFasta} --ref {params.ref} --tmpdir $TMPDIR --blasr {params.sd}/..//blasr/alignment/bin/blasr --out {output.asmSam} --nproc 4
 """
 
+
+
 rule MakeChrAsmBed:
     input:
         asmSam="contigs.{hap}.fasta.sam"
@@ -387,7 +391,7 @@ rule MakeChrAsmBed:
         asmBed="contigs.{hap}.fasta.sam.bed"
     params:
         grid_opts=config["grid_small"],
-        hgsvg=SD+ "/.."
+	hgsvg=SD+ "/.."
     shell:
         "{params.hgsvg}/mcutils/src/samToBed {input.asmSam}  --reportIdentity | bedtools sort  > {output.asmBed}"
 
@@ -512,9 +516,8 @@ rule MakeContigBed:
 # 
     shell:
         """for c in {} ; do  
-        egrep \"^$c\t\" {{input.asmBed}} > overlaps/overlaps.{{wildcards.hap}}.$c.bed;
-        h=`echo {{wildcards.hap}}| tr -d "h"`;
-        grep -P "/$h\\t"  overlaps/overlaps.{{wildcards.hap}}.$c.bed > overlaps/overlaps.{{wildcards.hap}}.$c.ctg0.bed;
+        egrep "^$c" {{input.asmBed}} | \
+        egrep "/0"$'\\t' > overlaps/overlaps.{{wildcards.hap}}.$c.ctg0.bed;
         done
         true """.format(" ".join(chroms))
     

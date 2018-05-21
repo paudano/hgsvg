@@ -197,19 +197,21 @@ if args.commands is not None:
     exit(0)
 if args.split is not None:
     #split gap groups into N separate files.
-    gapsPerFile = len(gapGroups)/ args.split
+    gapsPerFile = int(len(gapGroups)/ args.split)
+
     start=0
     end=0
     idx=0
-    for i in range(0,args.split-1):
-        end = start + gapsPerFile
-        outFile = open(args.splitDir + "/gaps.bed.{}".format(idx),'w')
-        if headerLine is not None:
-            outFile.write(headerLine + "\n")
-        outFile.write("\n".join(["\t".join(gap) for gapGroup in gapGroups[start:end] for gap in gapGroup])+"\n")
-        outFile.close()
-        idx+=1
-        start = end
+    if gapsPerFile > 0:
+        for i in range(0,args.split-1):
+            end = start + gapsPerFile
+            outFile = open(args.splitDir + "/gaps.bed.{}".format(idx),'w')
+            if headerLine is not None:
+                outFile.write(headerLine + "\n")
+                outFile.write("\n".join(["\t".join(gap) for gapGroup in gapGroups[start:end] for gap in gapGroup])+"\n")
+                outFile.close()
+            idx+=1
+            start = end
     outFile = open(args.splitDir + "/gaps.bed.{}".format(idx),'w')
     end=len(gapGroups)
     if headerLine is not None:

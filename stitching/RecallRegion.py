@@ -135,8 +135,10 @@ if args.dotplot is not None:
 if args.indels is not None:
     tempIndelsFile = tempfile.NamedTemporaryFile(dir=args.tmpdir, suffix=".bed", delete=False, mode='w')
     pgIndelsCommand= scriptDir+"/../sv/utils/PrintGaps.py {} {} --outFile {} --condense 20 --maxMasked 10 --maxLength 50 --minLength 2 --minAlignmentLength {} ".format(rFile.name, sFile.name, tempIndelsFile.name, args.minAlignLength)
+    sys.stderr.write(pgIndelsCommand+"\n\n")
     subprocess.call(pgIndelsCommand.split())
     tempIndelsFile.close()
+    sys.stderr.write( "opening indels file " + args.indels + "\n")
     indelFile = open(args.indels,'w')
     tmpIndelFile = open(tempIndelsFile.name)
     for line in tmpIndelFile:

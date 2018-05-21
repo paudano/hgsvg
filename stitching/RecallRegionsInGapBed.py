@@ -197,11 +197,17 @@ if args.commands is not None:
     exit(0)
 if args.split is not None:
     #split gap groups into N separate files.
-    gapsPerFile = int(len(gapGroups)/ args.split)
+    if len(gapGroups) > args.split:
+        gapsPerFile = len(gapGroups)/ args.split
+    else:
+        gapsPerFile = len(gapGroups)
+        args.split=1
+
 
     start=0
     end=0
     idx=0
+
     if gapsPerFile > 0:
         for i in range(0,args.split-1):
             end = start + gapsPerFile

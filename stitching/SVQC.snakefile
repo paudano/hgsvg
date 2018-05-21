@@ -643,7 +643,7 @@ rule AddSupport:
     shell:"""
 cat {input.opbed} | \
  bioawk -c hdr '{{ if (NR==1) {{ print "#oChrom\\toStart\\toEnd\\t"$0;}} else {{ print $1"\\t"$2"\\t"$3"\\t"$0}}}}' |  \
- bedtools slop -header -i stdin -g /net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.fasta.fai  -b 200 | \
+ bedtools slop -header -i stdin -g {params.ref}.fai  -b 200 | \
  bedtools intersect -header -a stdin -b {input.locbed} -loj  |\
  awk '{{ if ($NF != ".") print;}}' |\
  awk '{{ if (NR == 1) {{ print $0"\\tqChrom\\tqStart\\tqEnd\\tqop\\tqsvlen\\tqsvseq\\tqsvtsd\\tqsvasm"; }} else {{ print $0;}}}}' | \

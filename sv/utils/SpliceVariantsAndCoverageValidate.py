@@ -49,7 +49,7 @@ if args.count is None:
 if args.tmpdir is None:
 
     if "TMPDIR" not in os.environ or os.environ["TMPDIR"] == "":
-        print "ERROR. The TEMPDIR variable must be set or --tmpdir specified on as a command  argument"
+        print("ERROR. The TEMPDIR variable must be set or --tmpdir specified on as a command  argument\n")
         sys.exit(1)
     else:
         args.tmpdir = os.environ["TMPDIR"]
@@ -293,6 +293,8 @@ def CompareHaplotypes(a, b, care=False):
         return True
     else:
         return a.hap == b.hap
+import pdb
+pdb.set_trace()
 
 while i < len(gaps):
     svClusters.append([])
@@ -303,10 +305,12 @@ while i < len(gaps):
         GetStart(gaps[i+1])-GetEnd(gaps[i]) < args.window and \
         GetLength(gaps[i+1]) < args.maxMergedSV and \
         CompareHaplotypes(gaps[i], gaps[i+1], args.separateHaplotypes):
+        sys.stderr.write("{} \t {} \t{}\t{}\n".format(i, GetStart(gaps[i+1]), GetEnd(gaps[i]), GetStart(gaps[i+1])-GetEnd(gaps[i])))
         i+=1
         svClusters[-1].append(gaps[i])
     i+=1
-
+import pdb
+pdb.set_trace()
 
 if args.split is not None:
     sStart = 0
@@ -458,7 +462,7 @@ def SpliceTestLine(svs):
         #
         # This uses the SNV vcf in the argument to partition reads, and genotype by phase tag.
         #
-        print "about to start genotyping"
+        print("about to start genotyping\n")
         dipSamFile = tempfile.NamedTemporaryFile(dir=args.tmpdir, suffix=".dip"+sSuffix, delete=False, mode='w')
         tempFileNames.append(dipSamFile.name)
         dipSamFile.close()
@@ -543,10 +547,10 @@ def SpliceTestLine(svs):
     sys.stderr.write(svs[0].svType+ " " + str(cov) + "\n")
     
     if args.genotypeVcf is False and "db" in cov and cov["db"] < 500:
-        print "spliced " + str(len(svs))        
-        print "cov:"
-        print cov
-        print "{}:{}-{}".format(svs[0].chrom,svs[0].start,svs[0].end)
+        print( "spliced " + str(len(svs))        )
+        print( "cov:")
+        print( cov)
+        print( "{}:{}-{}".format(svs[0].chrom,svs[0].start,svs[0].end))
 
 
     cleanup = "/bin/rm " + " ".join(tempFileNames)
@@ -554,7 +558,7 @@ def SpliceTestLine(svs):
     if args.keep is False:
         subprocess.call(cleanup.split())
     else:
-        print cleanup
+        print(cleanup)
 
     if args.genotypeVcf is None:
         dbCov = cov["db"]

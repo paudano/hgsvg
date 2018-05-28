@@ -128,7 +128,7 @@ while i <len(gaps):
          gapLines+=";"+"%".join(gaps[j])
          rEndWindow=max(2*int(gaps[j][svLenI]),maxWindow)         
          gapGroups[-1].append(gaps[j])
-         
+
 #    sys.stderr.write( str(int(gaps[j][2]) + args.window - int(gaps[i][1]) + args.window ) + "\t" + str(maxGap) + "\n")
 #    sys.stderr.write("Validating " + str(j-i+1) + " sites.\n")
 #    sys.stderr.write("\n\nstarting at " + str(i) + "\n")

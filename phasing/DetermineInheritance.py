@@ -46,7 +46,6 @@ for rec in vcfFile.fetch():
              (moInherited, moRetained) = GetInheritance(ch[moHap], mo)
              if moPrev is None or moPrev[0] != rec.chrom:
                  if moPrev is not None:
-                     print "writing to mo"
                      moOut.write(str(moStart[0]) + "\t" + str(moStart[1]) + "\t" + str(moPrev[1]) +"\t" + str(moPrev[2]) + "\t" + str(moPrev[3]) + "\n")                     
                  moPrev = (rec.chrom, rec.start, moInherited, moHap)
                  moStart = (rec.chrom, rec.start, moInherited, moHap)

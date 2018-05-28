@@ -28,7 +28,7 @@ def Run(files):
                                                                                                         files[0],\
                                                                                                         files[1],\
                                                                                                         files[2])
-    print command
+    print(command+"\n")
     subprocess.call(command.split())
 
 

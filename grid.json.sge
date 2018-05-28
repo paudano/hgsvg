@@ -1,0 +1,6 @@
+{
+	"grid_quad" : "qsub -pe serial 4 -l h_rt=24:00:00 -l mfree=4G",
+	"grid_small" : "qsub -pe serial 1 -l h_rt=2:00:00 -l mfree=1G",
+	"grid_large" : "qsub -pe serial 1 -l h_rt=2:00:00 -l mfree=8G",
+	"grid_manycore" : "qsub -pe serial 12 -l h_rt=24:00:00 -l mfree=2G"
+}

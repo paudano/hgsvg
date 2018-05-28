@@ -4,7 +4,7 @@ BASE="$( cd "$(dirname "$0")" ; pwd -P )"
 usage()
 {
 cat << EOF
-		RunTrioTiledAssemblyOnRegions.sh regions paramfile 
+		DetermineInheritance.sh [all options required]
 		--vcf Trio phased vcf.
 		--fa  ID of father.
     --mo  ID of mother.

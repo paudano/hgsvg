@@ -14,7 +14,13 @@ elif os.path.exists(SSD_TMP_DIR):
 else:
     TMPDIR = tempfile.gettempdir()
 
-configfile: "stitching.json"
+configfile: "phasedsv.json"
+SD = os.path.dirname(workflow.snakefile)
+grid_file=open("grid.json")
+gridOpts= json.load(grid_file)
+for key in gridOpts:
+    config[key] = gridOpts[key]
+
 
 def GetFastq(fofn):
     f=open(fofn)
@@ -27,16 +33,18 @@ SLOP_FOR_SV_SEQUENCE_POSITIONS = 5000
 faiFile = open(config['ref']+".fai")
 chroms = [l.split()[0].rstrip() for l in faiFile]
 
-SD = os.path.dirname(workflow.snakefile)
+
 cwd=os.getcwd()
 
-shell.prefix("source {SD}/config.sh; ")
+shell.prefix("source ./config.sh; ")
 
 haps=["h0","h1"]
 shortHaps=["0", "1"]
 
 config["fastq_1_fofn"] = "NA"
 config["fastq_2_fofn"] = "NA"
+config["overlapsPerJob"]= 1000
+config["recall_bin"] = 100
 
 rule all:
     input:
@@ -118,7 +126,7 @@ rule ApplyPolish:
     output:
         polish="{sample}.{hap}.polish.fasta",
     params:
-        grid_opts="-pe serial 1 -l h_rt=1:00:00 -l mfree=8G",
+        grid_opts=config["grid_small"],
         sd=SD
     shell:"""
 {params.sd}/ApplyVCFPatch.py --genome {input.assembly} --vcf {input.vcf} --out {output.polish}

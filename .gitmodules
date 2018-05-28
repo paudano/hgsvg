@@ -1,8 +1,8 @@
-[submodule "blasr"]
-	path = blasr
-	url = https://github.com/mchaisso/blasr.git
-	ignore = dirty
 [submodule "mcutils"]
 	path = mcutils
 	url = https://github.com/mchaisso/mcutils
 	ignore = dirty
+[submodule "blasr"]
+	path = blasr
+	url = https://github.com/mchaisso/blasr.git
+	branch = whole-genome-alignment-fix

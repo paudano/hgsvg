@@ -30,9 +30,12 @@ prevSource = None
 curSource  = None
 ovp=False
 line = None
+
 for line in sys.stdin:
+    readOne = True
     if line[0] == "#":
         sys.stdout.write(line)
+        line = None
         continue
     vals = line.split()
     if len(vals) < 3:

@@ -86,7 +86,9 @@ rule all:
         inttagbedsummary=expand("intfinal_ortho.{svtype}.bed.pbsummary",svtype=svTypes),        
         mergedortho=expand("merged_ortho.{svtype}.bed",svtype=svTypes),
         mergedintegrated=expand("{sample}.merged_nonredundant.{svtype}.bed", sample=config["sample"], svtype=svTypes),
+        mnrLocus=expand("{sample}.merged_nonredundant_loci.DEL.bed", sample=config["sample"]),        
         mergedintegratedvcf=expand("{sample}.merged_nonredundant.{svtype}.vcf", sample=config["sample"], svtype=svTypes),
+        mnrLocusVCF=expand("{sample}.merged_nonredundant_loci.DEL.vcf", sample=config["sample"]),
         combinedvcf=expand("{sample}.merged_nonredundant.vcf", sample=config["sample"]),        
         mergedintegratedvcfexonstr=expand("{sample}.merged_nonredundant_exon.{svtype}.bed", sample=config["sample"], svtype=svTypes),
         mergedintegratedvcfexonsmerged=expand("{sample}.merged_nonredundant_exon.{svtype}.bed.tr", sample=config["sample"], svtype=svTypes),
@@ -148,7 +150,9 @@ rule all:
         UniqueExons=expand("excluding_simple_and_mei_exon.{op}.bed", op=svTypes),
         GainAnnotationSummary=expand("Gain_annotation_Summary.{op}.tab",op=svTypes),
         simpleReciprocal=expand("simple_reciprocal.{op}.bed",op=svTypes),
-        browsertrack=expand(config["sample"]+".{b}",b=["bed9","bb"])
+        browsertrack=expand(config["sample"]+".{b}",b=["bed9","bb"]),
+        addAlgorithm=expand("mnr_with_algo.{op}.bed",op=svTypes)
+        
         
         
         
@@ -164,6 +168,20 @@ if "bn_read_cov" not in config:
 
 if "softclip" not in config:
     config["softclip"] = "NONE"
+
+rule AddAlg:
+    input:
+       svs=config["sample"]+".merged_nonredundant.{op}.bed",
+       intIsect="intfinal_query_pb_isect.{op}.bed",
+       intFile="int_filt.{op}.bed"
+    output:
+       mnr="mnr_with_algo.{op}.bed"
+    params:
+       sd=SD,
+    shell:"""
+{params.sd}/AddAlgorithm.py <(paste {input.intIsect}  <( bioawk -c hdr '{{ print $ALGORITHM;}}' < {input.intFile} ) ) {input.svs} int_filt_pb_key | \
+    bioawk -c hdr '{{ print $1"\\t"$2"\\t"$3"\\t"$4"\\t"$5"\\t"$svLen"\\t"$svAnn"\\t"$union"\\t"$svAnn"\\t"$svClass"\\t"$ALGORITHM;}}'  > {output.mnr}
+"""
 
 rule MakeBB:
     input:
@@ -848,7 +866,21 @@ cat {input.merged} | bioawk -c hdr '{{ if (substr($0,0,1) == "#") {{ print $0"\\
    }} }} ' > {output.mergedint}
 """
 
-
+rule AddLoci:
+    input:
+        mnr=config["sample"]+".merged_nonredundant.DEL.bed",
+        orig=config["pbfinal"]
+    output:
+        mnrLocus=config["sample"]+".merged_nonredundant_loci.DEL.bed",
+    params:
+        sge_opts=config["sge_small"],
+        sd=SD,
+    shell:"""
+cat {input.orig} | bioawk -c hdr '{{ if (NR == 1 || $svType == "locus") print;}}' > {output.mnrLocus}.tmp.locus
+{params.sd}/../../utils/MergeFiles.py --files {input.mnr} {output.mnrLocus}.tmp.locus --out {output.mnrLocus}
+rm -f {output.mnrLocus}.tmp.locus
+"""
+    
 #
 # This takes all of the SV tables that have been labeled whether or not
 # a call exists in another dataset, and merges them into one master table that
@@ -1310,7 +1342,8 @@ cat {input.intfilt} | \
   bedtools slop -header -i stdin -b {params.window} -g {params.ref}.fai |\
   bedtools intersect -a stdin -b {input.pbfinalquery} -header -loj | \
   awk '{{ if (substr($0,0,1) == "#") {{ print $0"\\toChrom\\toStart\\toEnd";}} else {{ print $0; }} }} ' | \
-  {params.sd}/SelectBestcall.py --infile /dev/stdin --header int_filt_pb  --ts 21 --te 22 --svlen 7  --key > {output.intfinalpbisect}
+  {params.sd}/SelectBestcall.py --infile /dev/stdin --header int_filt_pb  --ts 21 --te 22 --svlen 7  --key > {output.intfinalpbisect}.tmp
+paste {output.intfinalpbisect}.tmp <( bioawk -c hdr '{{ print $ALGORITHM; }} < {input.intfilt} ) > {output.intfinalpbisect}
 """
 
 rule IntersectIntegratedOrigAndPBFinal:
@@ -1360,7 +1393,8 @@ rule AnnotatePBWithIntIsect:
         sge_opts="-pe serial 1 -l h_rt=1:00:00 -l mfree=2G",
         sd=SNAKEMAKE_DIR,
     shell:"""
-bioawk -c hdr '{{ print $int_filt_pb_key;}}' < {input.intfinalpbisect}  | {params.sd}/KeyToColumn.py --keys /dev/stdin --bed {input.pbfinal} --header int_match --out {output.pbfinal_int_tag}    
+bioawk -c hdr '{{ print $int_filt_pb_key;}}' < {input.intfinalpbisect}  | \
+  {params.sd}/KeyToColumn.py --keys /dev/stdin --bed {input.pbfinal} --header int_match --out {output.pbfinal_int_tag}    
 """
 
 rule CreateReverseLookupIntToPB:
@@ -1721,7 +1755,20 @@ rule NonRedundantToVCF:
 
 {params.sd}/../../utils/variants_bed_to_vcf.py --bed {input.bed} --vcf {output.vcf} --type sv --ref {params.ref} --fields SVCLASS svClass CALLSET callset UNION union --sample {wildcards.sample}
 """
-    
+
+rule NonRedundantLociToVCF:
+    input:
+        bed="{sample}.merged_nonredundant_loci.DEL.bed",
+    output:
+        vcf="{sample}.merged_nonredundant_loci.DEL.vcf",
+    params:
+        sge_opts="-pe serial 1 -l h_rt=1:00:00 -l mfree=1G",
+        sd=SNAKEMAKE_DIR,
+        ref=config["ref"]
+    shell:"""
+{params.sd}/../../utils/variants_bed_to_vcf.py --bed {input.bed} --vcf {output.vcf} --type sv --ref {params.ref} --fields SVCLASS svClass CALLSET callset UNION union --sample {wildcards.sample}
+"""
+
 rule RunVEP:
     input:
         vcf="{sample}.merged_nonredundant.{svtype}.vcf",
@@ -1822,9 +1869,12 @@ rule GetTFBSAblation:
         
 rule MakeCombinedVCF:
     input:
-        mnr=expand("{sample}.merged_nonredundant.{svtype}.vcf", sample=config["sample"], svtype=svTypes),
+        mnr=[config["sample"]+".merged_nonredundant_loci.DEL.vcf", config["sample"]+".merged_nonredundant.INS.vcf"]
     output:
         comb=config["sample"] + ".merged_nonredundant.vcf"
     shell:"""
 cat <( grep "^#" {input.mnr[0]} ) <( grep -v "^#" {input.mnr[0]} | sort -k1,1 -k2,2n ) <( grep -v "^#" {input.mnr[1]} | sort -k1,1 -k2,2n ) > {output.comb}
 """
+
+
+

@@ -31,7 +31,7 @@ for line in keyFile:
 
     counts[key] = 0
     idx +=1
-sys.stderr.write("Stored " + str(len(keys)) + " keys of " + str(idx) + "\n")
+
 reverse = ["NONE"] * idx
 if args.header is not None:
     outFile.write(args.header + "\n")

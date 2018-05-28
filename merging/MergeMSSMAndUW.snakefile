@@ -51,10 +51,7 @@ rule all:
         mssmLocal  = expand("local.{mssm}", mssm=allMSSMBase.values()),
         mssmUW     = expand("{mssm}.uw",mssm=allMSSMBase.values()),
         mssmSort   = expand("{mssm}.sorted",mssm=allMSSMBase.values()),
-<<<<<<< HEAD
         mssmSortDD = expand("{mssm}.sorted.dedup",mssm=allMSSMBase.values()),
-=======
->>>>>>> 41b294906ac6a16361dc998661faaeb5d4fe279b
         mssmSortBN = expand("{mssm}.sorted.bntab",mssm=allMSSMBase.values()),        
         mssmSortClusters   = expand("{mssm}.sorted.window_clusters",mssm=allMSSMBase.values()),        
         mssmBnSupport=expand("bn_support.{mssm}.tab",mssm=allMSSMBase.values()),

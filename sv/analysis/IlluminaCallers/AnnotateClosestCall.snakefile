@@ -1477,7 +1477,7 @@ rule MakeILLSVCoverage:
         read_cov=config["bn_read_cov"]
     shell:"""
 if [ {params.read_cov} == "NONE" ]; then
-{params.sd}/SVCoverage.py --fofn {params.fofn} --calls {input.calls} --out {output.svCoverage} --nproc 1 --bionano --op {wildcards.svtype} --header --window 1000
+{params.sd}/../../utils/SVCoverage.py --fofn {params.fofn} --calls {input.calls} --out {output.svCoverage} --nproc 1 --bionano --op {wildcards.svtype} --header --window 1000
 else
 cp {params.read_cov}.{wildcards.svtype}.bed {output.svCoverage}
 fi

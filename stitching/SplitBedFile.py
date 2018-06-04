@@ -2,7 +2,7 @@
 
 
 import argparse
-
+import math
 ap = argparse.ArgumentParser(description="Split a bed file with some overlap between splits")
 ap.add_argument("--bed", help="Input bed file.",required=True)
 ap.add_argument("--n", help="Numbe of lines per file.",required=True,type=int)
@@ -13,14 +13,13 @@ args = ap.parse_args()
 
 bedFile = open(args.bed)
 bed = bedFile.readlines()
-if len(bed) == 0:
-    outFile= open(args.base + ".0.bed",'w')
-    outFile.close()
-else:
-    for i in range(0, len(bed), args.n):
-        start = max(0,i-args.overlap)
-        end = min(i+args.n,len(bed))
-        outFile = open(args.base + "." + str(i) + ".bed",'w')
+linesPerBin=math.ceil(float(len(bed))/args.n)
+
+for i in range(0, args.n):
+    start=int(min(i*linesPerBin,len(bed)))
+    end=int(min(len(bed), (i+1)*linesPerBin))
+    outFile = open(args.base + "." + str(i) + ".bed",'w')
+    if start < end:
         outFile.write(''.join(bed[start:end]))
-        outFile.close()
+    outFile.close()
     

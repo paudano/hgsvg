@@ -86,7 +86,7 @@ pool = Pool(args.nproc)
 ovps=[]
 res=pool.map_async(Run, commands, callback=ovps.append )
 
-res.wait(60*15)
+res.wait((last-start)*1000)
 filt=[]
 def GetStarts(l):
     vals=l.split()
@@ -103,10 +103,14 @@ def Compare(a,b):
     else:
         return sa[1] < sb[1]
 
-for ovp in ovps[0]:
-    if ovp != "\n" and ovp != "":
-        filt.append(ovp)
+if len(ovps) > 0:
+    for ovp in ovps[0]:
+        if ovp != "\n" and ovp != "":
+            filt.append(ovp)
     
-filt.sort(cmp=Compare)
+    filt.sort(cmp=Compare)
 
-outFile.write("\n".join(filt)+"\n")
+    outFile.write("\n".join(filt)+"\n")
+else:
+    sys.stderr.write("No overlaps were found\n")
+    sys.stderr.write("Input bed file had {} - {}: {} alignments".format(start, last, last-start))

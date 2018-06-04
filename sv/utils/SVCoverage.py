@@ -29,13 +29,17 @@ callFile = open(args.calls)
 readsFofn = open(args.fofn)
 blines = readsFofn.readlines()
 bamFiles = [pysam.AlignmentFile(bline.rstrip(), 'rb') for bline in blines]
+print blines
 bamFileIndex = {}
+
+
 for b in range(0,len(blines)):
     vals = blines[b].split(".")
     for v in vals:
         if "chr" in v:
             bamFileIndex[v]= b
             break
+
 
 outFile = open(args.out,'w')
 sem = Semaphore(1)
@@ -64,12 +68,16 @@ def ProcessLine(line):
     regionLength = args.window+regionEnd-max(0,regionStart-args.window)
     cov = [0]*(regionLength)
 
-    sys.stderr.write("Getting coverage for " + str(counter.value) + " of " + str(nsv) + " " + str(regionEnd - regionStart) + "\n")
+    sys.stderr.write("Getting coverage for " + str(int(counter.value)) + " of " + str(nsv) + "\t" + str(regionEnd - regionStart) + "\n")
     counter.value += 1
-    if vals[0] not in bamFileIndex:
+    
+    if len(blines) > 1 and vals[0] not in bamFileIndex:
         sys.stderr.write("Missing " + vals[0] + "\n")
         return 0
-    b = bamFileIndex[vals[0]]
+    elif len(blines) == 1:
+        b = 0
+    else:
+        b = bamFileIndex[vals[0]]
 
     sem.acquire()
     covall = bamFiles[b].count_coverage(vals[0], max(0,regionStart-args.window), regionEnd+args.window, quality_threshold=0)
@@ -107,7 +115,7 @@ def ProcessLine(line):
                     maxWSum = curSum
 
             if svLen > 0:
-                sys.stderr.write(str(svLen) + " minsv: " + str(minWSum) + " total " + str(sum(cov)) + "\tmin {:2.2f}\tmax {:2.2f}\tregion {:2.2f}".format(minWSum / float(svLen), maxWSum/float(svLen), sum(cov) / float(len(cov))) + " " + str(len(cov))+ "\t" + str(svLen) +  "\n")
+                sys.stderr.write(str(svLen) + " minsv: " + str(minWSum) + " total " + str(sum(cov)) + "\tmin {:2.2f}\tmax {:2.2f}\tregion {:2.2f}".format(minWSum / float(svLen), maxWSum/float(svLen), sum(cov) / float(len(cov))) + " " + str(len(cov))+ "\t" + str(svLen) + "\t" + vals[3] + "\n")
             if args.op == "DEL":
                 if svLen > 0:
                     return minWSum/float(svLen)

@@ -43,8 +43,10 @@ shortHaps=["0", "1"]
 
 config["fastq_1_fofn"] = "NA"
 config["fastq_2_fofn"] = "NA"
-config["overlapsPerJob"]= 1000
+config["overlapsPerJob"]= 20
 config["recall_bin"] = 100
+
+ovpIdx=range(0,config["overlapsPerJob"])
 
 rule all:
     input:
@@ -58,11 +60,9 @@ rule all:
         asmGraphs   = expand("overlaps/overlap.{hap}.{chrom}.txt.gml", hap=haps, chrom=chroms),
         asmPaths    = expand("overlaps/overlap.{hap}.{chrom}.txt.path", hap=haps, chrom=chroms),
         asmContigs  = expand("contigs/patched.{hap}.{chrom}.fasta", hap=haps, chrom=chroms),
+        alnContigs  = expand("contigs/patched.{hap}.{chrom}.fasta.sam", hap=haps, chrom=chroms),
 	chrFasta    = expand("contigs.{hap}.fasta", hap=haps),
 	chrFastaFai = expand("contigs.{hap}.fasta.fai", hap=haps),
-#        chrMemIndex = expand("index/contigs.{hap}.fasta.bwt", hap=haps),
-#        chrReadAln  = expand("index/contigs.{hap}.fasta.bam", hap=haps),
-#        contigHtsVCF= expand("index/contigs.{hap}.fasta.vcf", hap=haps),
 	chrAln      = expand("contigs.{hap}.fasta.sam", hap=haps),
         chrBed      = expand("contigs.{hap}.fasta.sam.bed", hap=haps),
 	chrBed6     = expand("contigs.{hap}.fasta.sam.bed6", hap=haps),
@@ -137,7 +137,7 @@ rule MakeDummyChroms:
     input:
         fasta="contigs.h0.fasta",
     output:
-        dummy=dynamic("dummy/contig.h0.{contig}.txt"),
+        dummy=expand("dummy/contig.h0.{contig}.txt",contig=chroms)
     params:
         grid_opts=config["grid_small"]
     shell:"""
@@ -152,7 +152,7 @@ rule MakeDummyChromsH1:
     input:
         fasta="contigs.h1.fasta",
     output:
-        dummy=dynamic("dummy/contig.h1.{contig}.txt"),
+        dummy=expand("dummy/contig.h1.{contig}.txt",contig=chroms),
     params:
         grid_opts=config["grid_small"]
     shell:"""
@@ -192,24 +192,9 @@ freebayes -f {input.fasta} -b {input.bam} --region {wildcards.contig} -m 10 --mi
 """
 
 
-
-#rule CombineVariants:
-#    input:
-#       invcf=dynamic("vcfs/contigs.h1.{contig}.vcf"),
-#    output:
-#       vcf="index/contigs.{hap}.fasta.vcf",
-#    params:
-#       grid_opts=config["grid_small"]
-#    shell:"""
-#grep "^#" {input.invcf[0]} > {output.vcf}
-#cat {input.invcf} | grep -v "^#" | sort -k1,1 -k2,2n >> {output.vcf}
-#"""
-#
-
-
 rule CombineVariantsH0:
     input:
-       invcf=dynamic("vcfs/contigs.h0.{contig}.vcf"),
+       invcf=expand("vcfs/contigs.h0.{contig}.vcf",contig=chroms),
     output:
        vcf="index/contigs.h0.fasta.vcf",
     params:
@@ -222,7 +207,7 @@ cat {input.invcf} | grep -v "^#" | sort -k1,1 -k2,2n >> {output.vcf}
 
 rule CombineVariantsH1:
     input:
-       invcf=dynamic("vcfs/contigs.h1.{contig}.vcf"),
+       invcf=expand("vcfs/contigs.h1.{contig}.vcf",contig=chroms),
     output:
        vcf="index/contigs.h1.fasta.vcf",
     params:
@@ -244,8 +229,8 @@ rule MapHTSReadsToContigs:
        sge_opts=config["grid_manycore"],
 #       fq1=GetFastq(config["fastq_1_fofn"]),
 #       fq2=GetFastq(config["fastq_2_fofn"])
-    shell:"""
-"""
+    shell:""
+
 #bwa mem -t 10 index/{input.asm}  '<zcat {params.fq1}' '<zcat {params.fq2}' | \
 #  samtools view -bS - | \
 #  samtools sort -m2G -@ 4 -T $TMPDIR/aln -o {output.bam}
@@ -476,7 +461,7 @@ rule SplitAsmOverlaps:
     input:
         bed="overlaps/overlaps.{hap}.{chrom}.ctg0.bed",
     output:
-        split=dynamic("overlaps/split_{chrom}/overlaps.{hap}.{chrom}.ctg0.{start}.bed"),
+        split=expand("overlaps/split_{{chrom}}/overlaps.{{hap}}.{{chrom}}.ctg0.{start}.bed", start=ovpIdx),
     params:
         grid_opts=config["grid_small"],
         sd=SD,
@@ -499,13 +484,14 @@ rule MakeSplitOverlaps:
         sd=SD
     shell:"""
 mkdir -p $TMPDIR ; mkdir -p overlaps/split_{wildcards.chrom}; {params.sd}/OverlapContigsOrderedByBed.py {input.bed} {input.asm} --chrom {wildcards.chrom} --out {output.splitAsmOverlaps} --nproc 12 --tmpdir $TMPDIR --blasr {params.sd}/../blasr/alignment/bin/blasr --path {params.sd}
+
 """
 
 rule MakeAsmOverlaps:
     input:
         bed="overlaps/overlaps.{hap}.{chrom}.ctg0.bed",
         asm="alignments.{hap}.bam.fasta",
-        splitAsmOverlaps=dynamic("overlaps/split_{chrom}/overlaps.{hap}.{chrom}.ctg0.{start}.txt")
+        splitAsmOverlaps=expand("overlaps/split_{{chrom}}/overlaps.{{hap}}.{{chrom}}.ctg0.{start}.txt",start=ovpIdx)
     output:
         asmOverlap="overlaps/overlap.{hap}.{chrom}.txt"
     params:
@@ -519,15 +505,15 @@ rule MakeContigBed:
     output:
         contigBed = expand("overlaps/overlaps.{{hap}}.{chrom}.ctg0.bed",chrom=chroms)
     params:
-        grid_opts=config["grid_small"]
-#
-# 
-    shell:
-        """for c in {} ; do  
-        egrep "^$c" {{input.asmBed}} | \
-        egrep "/0"$'\\t' > overlaps/overlaps.{{wildcards.hap}}.$c.ctg0.bed;
-        done
-        true """.format(" ".join(chroms))
+        grid_opts=config["grid_small"],
+        ch=chroms
+    shell:"""
+for c in {params.ch} ; do  
+   egrep "^$c	" {input.asmBed} | \
+   egrep "/0" > overlaps/overlaps.{wildcards.hap}.$c.ctg0.bed;
+done
+true 
+"""
     
 rule MakeAsmBed:
     input:

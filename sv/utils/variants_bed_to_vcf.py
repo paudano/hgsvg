@@ -170,9 +170,15 @@ def convert_bed_to_vcf(bed_filename, reference_filename, vcf_filename, sample, v
         if len(args.fields) > 0:
             extraKeys = [(args.fields[i], args.fields[i+1]) for i in range(0,len(args.fields),2)]
             infoKeys += extraKeys
-        calls["reference"] = calls.apply(lambda row: GetRefSeq(row, reference, 1), axis=1)
+        if args.seq:
+            calls["reference"] = calls.apply(lambda row: GetRefSeq(row, reference), axis=1)
+            calls["alt"] = calls.apply(lambda row: GetAltSeq(row, reference),axis=1)
+        else:
+            calls["reference"] = calls.apply(lambda row: GetRefSeq(row, reference, 1), axis=1)
+            calls["alt"] = calls.apply(lambda row: "<%s>" % row.svType[:3].upper(), axis=1) 
+
         calls["svLen"] =  calls.apply(lambda row: GetSVLen(row), axis=1)
-        calls["alt"] = calls.apply(lambda row: "<%s>" % row.svType[:3].upper(), axis=1)
+            
         calls["info"] = calls.apply(
             lambda row: ";".join(
                 ["=".join(map(str, (item[0], row[item[1]])))
@@ -261,6 +267,7 @@ if __name__ == "__main__":
     parser.add_argument("--bed", help="input BED file of variant calls")
     parser.add_argument("--reference", help="FASTA file for reference used with SMRT SV", required=True)
     parser.add_argument("--vcf", help="output VCF file of variant calls")
+    parser.add_argument("--seq", help="output ref and alt sequences, not <DEL> and <INS> for svs.", action='store_true', default=False)
     parser.add_argument("--sample", help="name of sample with variants")
     parser.add_argument("--type", help="variant call type", choices=("sv", "indel", "inversion"))
     parser.add_argument("--fields", help="Additional  fields to add", nargs="+", default=[])

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+import sys
 import argparse
 
 ap = argparse.ArgumentParser(description="Split samfiles by haplotype in title of contig")
@@ -25,11 +25,24 @@ for line in headerFile:
         
 
 for hapFileName in hapFofn:
-    
-    hapFile = open(hapFileName.strip())
+    try:    
+        hapFile = open(hapFileName.strip())
+    except:	
+        continue
+
+
     for line in hapFile:
         v = line.split()
         hap = v[-1]
+        if v[0] == "*":
+            continue
+        sys.stderr.write(hapFileName)
+        if v[0][-4:] == "/0/1":
+            hap0.write(line)
+            continue
+        if v[0][-4:] == "/0/2":
+            hap1.write(line)
+            continue
         if hap == "HA:i:1":
             hap0.write(line)
         elif hap == "HA:i:2":

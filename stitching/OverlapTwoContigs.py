@@ -25,9 +25,12 @@ args = ap.parse_args()
 
 
 def GetSeq(name, ref, tempFile):
+    sys.stderr.write("Grabbing " + ref + "'" + name + "'\n")
+
     faidx = "samtools faidx {} {}".format(ref, name)
     p = subprocess.Popen(faidx.split(), stdout=tempFile)
     p.wait()
+    sys.stderr.write("done\n")
 
 aTempFile = tempfile.NamedTemporaryFile(suffix=".fasta", dir=args.tmpdir, delete=False)
 bTempFile = tempfile.NamedTemporaryFile(suffix=".fasta", dir=args.tmpdir, delete=False)
@@ -86,7 +89,7 @@ if fileSize > 0:
                             qPos += tup[1]
                         elif tup[0] == 1 or tup[0] == 2:
                             if qPos > read.qstart and qPos < read.qend and tup[1] > 50:
-                                sys.stderr.write("read " + read.query_name + " has indel relative to " + args.b + " of len " + str(tup[1]) +"\n")
+                                #sys.stderr.write("read " + read.query_name + " has indel relative to " + args.b + " of len " + str(tup[1]) +"\n")
                                 nGapBases += tup[1]
                             if tup[0] == 1:
                                 qPos += tup[1]
@@ -100,7 +103,7 @@ if fileSize > 0:
                     l+=1
                     r-=1
 
-                print "{}\t{}\t{}\t".format(read.query_name, aNPre, aNPost) + "{}\t{}\t{}\t".format(args.b, bNPre, bNPost) +  "\t".join([str(i) for i in coords]) + "\t" + str(nGapBases) + "\t{}\t{}\t{}\t{}".format(p[l][0], p[r][0], p[l][1], p[r][1])
+                print("{}\t{}\t{}\t".format(read.query_name, aNPre, aNPost) + "{}\t{}\t{}\t".format(args.b, bNPre, bNPost) +  "\t".join([str(i) for i in coords]) + "\t" + str(nGapBases) + "\t{}\t{}\t{}\t{}".format(p[l][0], p[r][0], p[l][1], p[r][1]))
 
 if args.keep == False:
     command="rm -f {} {} {}".format(aTempFile.name, bTempFile.name, samTempFile.name)

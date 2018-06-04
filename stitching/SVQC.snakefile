@@ -38,6 +38,8 @@ rule all:
         orig_clusters=expand("SVQC/hap{hap}/gaps.sorted.window_clusters",hap=haps),
         bb=expand("SVQC/hap{hap}/{op}s.bb",hap=haps,op=["insertion","deletion"]),
         mergedRetained=expand("SVQC/hap{hap}/indels.svqc.bed",hap=haps),
+        filtMerged="merged/filt_sv_calls.bed",
+        filtVCF="merged/filt_sv_calls.vcf",
         mergedBed="merged/sv_calls.bed",
         mergedVCF="merged/sv_calls.vcf",
 	sampleVCF="merged/" + config["sample"] + ".sv_calls.vcf.gz",
@@ -58,6 +60,8 @@ rule all:
         fillInFiltNoClust=expand("fill-in/hap{hap}/gaps.bed.support.noclust",hap=haps),        
         fillInFiltClusters=expand("fill-in/hap{hap}/tr_clusters.bed",hap=haps),        
         fillInDiploid="fill-in/diploid/sv_calls.bed.support", 
+        fillInComb=expand("fill-in/hap{hap}/comb.bed",hap=haps),
+        fillInFiltVCCF=expand("fill-in/hap{hap}/"+config["sample"]+".hap{hap}.vcf",hap=haps),
         dipTrClusters=gapdir+"/dip_tr_clusters.bed",
         dipAllTrClusters=gapdir+"/dip_tr_clusters.bed.all",        
         reCalled=expand("{gapdir}/hap{hap}/gaps.recalled",gapdir=gapdir,hap=haps),
@@ -65,6 +69,7 @@ rule all:
         reCalledFiltered=expand("{gapdir}/hap{hap}/gaps.recalled.filt",gapdir=gapdir,hap=haps),
         reCalledFilteredClusters=expand("{gapdir}/hap{hap}/gaps.recalled.filt.clusters",gapdir=gapdir,hap=haps),
         indelBed=expand("{gapdir}/hap{hap}/indels.recalled.bed",gapdir=gapdir,hap=haps),
+        filtSVCalls=expand("{gapdir}/diploid/sv_calls.bed.filt",gapdir=gapdir),
         svCalls=expand("{gapdir}/diploid/sv_calls.bed",gapdir=gapdir),
         retainedIndels=expand("{gapdir}/hap{hap}/indels.retained.bed",gapdir=gapdir, hap=haps),
         recalledRgions=expand("{gapdir}/hap{hap}/regions.recalled.ref",gapdir=gapdir, hap=haps),
@@ -84,6 +89,81 @@ rule all:
         trClusterCalls=gapdir+"/tr_clusters.calls.bed",
         indels=expand("SVQC/hap{hap}/indels_local.bed",hap=haps),
         indels_op=expand("SVQC/hap{hap}/indels_local.{op}.bed",hap=haps, op=ops),
+        fillInSVCoverage=expand("fill-in/hap{hap}/gaps.bed.readcov",hap=haps),
+        hapSVCoverage=expand("SVQC/hap{hap}/gaps.recalled.sorted.readcov",hap=haps)
+rule HapSVCov:
+    input:
+        calls="SVQC/hap{hap}/gaps.recalled.sorted"
+    output:
+        svCoverage="SVQC/hap{hap}/gaps.recalled.sorted.readcov"
+    params:
+        grid_opts=config["grid_large"],
+        sd=SNAKEMAKE_DIR,
+        fofn=config["bams"],
+    shell:"""
+{params.sd}/../sv/utils/SVCoverage.py --fofn {params.fofn} --calls {input.calls} --out {output.svCoverage} --nproc 1  --op DEL  --header --window 1000
+"""
+
+rule FillInHapSVCov:
+    input:
+        calls="fill-in/hap{hap}/gaps.bed"
+    output:
+        svCoverage="fill-in/hap{hap}/gaps.bed.readcov"
+    params:
+        grid_opts=config["grid_large"],
+        sd=SNAKEMAKE_DIR,
+        fofn=config["bams"],
+    shell:"""
+{params.sd}/../sv/utils/SVCoverage.py --fofn {params.fofn} --calls {input.calls} --out {output.svCoverage} --nproc 1  --op DEL --header --window 1000
+"""
+
+
+rule CombinedHaps:
+    input:
+        fillInGaps="fill-in/hap{hap}/gaps.bed.support",
+        asmGaps=gapdir+"/hap{hap}/gaps.recalled.filt",
+    output:
+        comb="fill-in/hap{hap}/comb.bed",
+    params:
+        grid_opts=config["grid_small"],
+        sd=SNAKEMAKE_DIR,
+        ref=config["ref"],
+    shell:"""
+bedtools intersect -header -v -a {input.fillInGaps} -b {input.asmGaps} > {input.fillInGaps}.no_asm
+{params.sd}/../sv/utils/MergeFiles.py --files {input.asmGaps} {input.fillInGaps}.no_asm --out /dev/stdout | \
+  bedtools sort -header > {output.comb}
+"""
+
+rule FilterCombinedHaps:
+    input:
+        comb="fill-in/hap{hap}/comb.bed",
+    output:
+        filt="fill-in/hap{hap}/comb.bed.filt",
+    params:
+        grid_opts=config["grid_small"],
+        sd=SNAKEMAKE_DIR,
+        ref=config["ref"],
+        depth=int(float(config["depth"])*0.60)
+    shell:"""
+cat {input.comb} | bioawk -c hdr '{{ if (NR==1 || ($nAlt > 3 || ($svType == "deletion" && $coverage < {params.depth}))) {{ print;}} }}' > {output.filt}
+"""
+
+rule CombinedHapsToVCF:
+    input:
+        filt="fill-in/hap{hap}/comb.bed.filt",
+    output:
+        vcf="fill-in/hap{hap}/"+config["sample"]+".hap{hap}.vcf"
+    params:
+        grid_opts=config["grid_small"],
+        sd=SNAKEMAKE_DIR,
+        ref=config["ref"],
+        depth=int(float(config["depth"])*0.60),
+        sample=config["sample"]
+    shell:"""
+{SNAKEMAKE_DIR}/../sv/utils/variants_bed_to_vcf.py --bed {input.filt} --ref {params.ref} --sample {params.sample} --type sv --seq --vcf /dev/stdout --fields NALT nAlt NREF nRef | bedtools sort -header > {output.vcf}
+
+"""
+
 rule CreateClusterCalls:
     input:
         reCalledFiltered=gapdir+"/hap{hap}/gaps.recalled.filt",
@@ -92,7 +172,7 @@ rule CreateClusterCalls:
     output:
         reCalledFilteredClusters=gapdir+"/hap{hap}/gaps.recalled.filt.clusters"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SNAKEMAKE_DIR,
         ref=config["ref"],
         clusterSize=config["tr_cluster_size"]
@@ -117,7 +197,7 @@ rule CreateTRClusterCalls:
     output:
         calls=gapdir+"/tr_clusters.calls.bed"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SNAKEMAKE_DIR
     shell:"""
 {params.sd}/../sv/utils/CombineVariableLoci.py  --regions {input.regions} --lifted {input.lifted}  --sequences {input.fasta} --outFile {output.calls}
@@ -129,7 +209,7 @@ rule MergeAllTRClusters:
     output:
         dip=gapdir+"/dip_tr_clusters.bed.all",
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
     shell:"""
 cat {input.clusters} | bedtools sort | bedtools merge > {output.dip}
 """
@@ -141,7 +221,7 @@ rule MergeTRClusters:
     output:
         dip=gapdir+"/dip_tr_clusters.bed",
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
     shell:"""
 cat {input.clusters} {input.allClusters} | bedtools sort | bedtools merge > {output.dip}
 """
@@ -154,7 +234,7 @@ rule SplitGaps:
         splitGaps=dynamic(gapdir+"/hap{hap}/split/gaps.bed.{id}")
     params:
         n=config["recall_bin"],
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         ref=config["ref"],
         sd=SNAKEMAKE_DIR,
         gd=gapdir
@@ -178,7 +258,7 @@ rule RecallGaps:
         recalled=gapdir+"/hap{hap}/split/gaps.recalled.{id}",
         refRegions=gapdir+"/hap{hap}/split/regions.recalled.ref.{id}",
     params:
-        sge_opts=config["grid_manycore"],
+        grid_opts=config["grid_manycore"],
         ref=config["ref"],
         ngmlr_cutoff=config["ngmlr_cutoff"],
         do_recall=config["do_recall"],
@@ -204,7 +284,7 @@ rule MergeRecalledIndels:
     output:
         indelBed=gapdir+"/hap{hap}/indels.recalled.bed"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         gapdir=gapdir
     shell:"""
 cat {params.gapdir}/hap{wildcards.hap}/indels/* | head -1 > {output.indelBed}
@@ -221,7 +301,7 @@ rule MergeRetainedAndRecalledIndels:
     output:
         mergedRetained=gapdir+"/hap{hap}/indels.svqc.bed"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
     shell:"""
 head -1 {input.indelBed} | cut -f 1-6 > {output.mergedRetained}
 cat {input.indelBed} {input.retainedIndels} | cut -f 1-6 | grep -v "^#" | bedtools sort >> {output.mergedRetained}
@@ -231,7 +311,7 @@ rule SplicedPBSupport:
     input:
         gaps=gapdir+"/hap{hap}/split/gaps.recalled.{id}"
     params:
-        sge_opts=config["grid_manycore"],
+        grid_opts=config["grid_manycore"],
         ref=config["ref"],
         bams=config["bams"],
         sd=SNAKEMAKE_DIR,
@@ -243,7 +323,7 @@ rule SplicedPBSupport:
 bedtools sort -header -i {input.gaps} > {input.gaps}.tmp
 mv -f {input.gaps}.tmp {input.gaps}
 mkdir -p {params.gapdir}/hap{wildcards.hap};
-{params.sd}/../sv/utils/SpliceVariantsAndCoverageValidate.py --gaps {input.gaps} --ref {params.ref} --reads {params.bams} --window 1000 --flank 2000 --out {output.pbSupport} --nproc 8 --blasr {params.sd}/../blasr/alignment/bin/blasr 
+{params.sd}/../sv/utils/SpliceVariantsAndCoverageValidate.py --gaps {input.gaps} --ref {params.ref} --reads {params.bams} --window 1000 --flank 2000 --out {output.pbSupport} --nproc 1 --blasr {params.sd}/../blasr/alignment/bin/blasr 
 """        
 
 rule AddSplicedPBSupport:
@@ -251,7 +331,7 @@ rule AddSplicedPBSupport:
         sup=gapdir+"/hap{hap}/split/gaps.recalled_support.{id}",
         gaps=gapdir+"/hap{hap}/split/gaps.recalled.{id}"        
     params:
-        sge_opts=config["grid_manycore"],
+        grid_opts=config["grid_manycore"],
         ref=config["ref"],
         bams=config["bams"]
     output:
@@ -267,7 +347,7 @@ rule MergeRecallGaps:
         recalled=gapdir+"/hap{hap}/gaps.recalled",
         recalledRegions=gapdir+"/hap{hap}/regions.recalled.ref"        
     params:
-        sge_opts=config["grid_manycore"],
+        grid_opts=config["grid_manycore"],
         gapdir=gapdir
     shell:"""
 # Create the header, but some of the pasted headers have extra #'s in them, so
@@ -286,7 +366,7 @@ rule SortRecallGaps:
     output:
         recalledSorted="{gapdir}/hap{hap}/gaps.recalled.sorted"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
     shell:"""
 bedtools sort -header -i {input.recalled} > {output.recalledSorted}
 """
@@ -294,15 +374,16 @@ bedtools sort -header -i {input.recalled} > {output.recalledSorted}
 
 rule FilterRecalledGaps:
     input:
-        gaps="{gapdir}/hap{hap}/gaps.recalled.sorted"
+        gaps="{gapdir}/hap{hap}/gaps.recalled.sorted",
+        readcov="{gapdir}/hap{hap}/gaps.recalled.sorted.readcov",
     output:
         filt="{gapdir}/hap{hap}/gaps.recalled.filt"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         inversions=config["inversions"],
     shell:"""
-nf=`head -1 {input.gaps} | awk '{{ print NF;}}'`
-bedtools intersect -header -f 0.9 -v -a {input.gaps} -b {params.inversions}  | \
+nf=`paste {input.gaps} {input.readcov} | head -1 | awk '{{ print NF;}}'`
+paste {input.gaps} {input.readcov} | bedtools intersect -header -f 0.9 -v -a stdin -b {params.inversions}  | \
 bedtools groupby -header -g 1-5 -c 1 -o first -full | cut -f 1-$nf > {output.filt}
 """
 
@@ -313,7 +394,7 @@ rule AnnotateAllTRClusters:
         trClusters="{gapdir}/hap{hap}/tr_clusters.bed.all",
     params:
         clusterSize=config["tr_cluster_size"],
-        sge_opts=config["grid_manycore"],
+        grid_opts=config["grid_manycore"],
         contigBed=lambda wildcards: contigs[wildcards.hap] + ".sam.bed",
         sd=SNAKEMAKE_DIR,
         tr=SNAKEMAKE_DIR+"/../regions/tandem_repeats_strs_slop.bed",
@@ -339,7 +420,7 @@ rule FindTRClusters:
         trClusters="{gapdir}/hap{hap}/tr_clusters.bed",
     params:
         clusterSize=config["tr_cluster_size"],
-        sge_opts=config["grid_manycore"],
+        grid_opts=config["grid_manycore"],
         contigBed=lambda wildcards: contigs[wildcards.hap] + ".sam.bed",
         sd=SNAKEMAKE_DIR,
         tr=SNAKEMAKE_DIR+"/../regions/tandem_repeats_strs_slop.bed",
@@ -367,7 +448,7 @@ rule SeparateTRClusterSVCalls:
         gapsClust=gapdir+"/hap{hap}/gaps.recalled.clust",
         gapsNoClust=gapdir+"/hap{hap}/gaps.recalled.noclust",
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SNAKEMAKE_DIR,
     shell:"""
 cat {input.filt} | {params.sd}/../sv/utils/ToPoint.sh | \
@@ -385,7 +466,7 @@ rule AnnotateSVInTR:
     output:
         trNet="{gapdir}/hap{hap}/tr_net.tab"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         tr=SNAKEMAKE_DIR+"/../regions/tandem_repeats_strs_slop.bed",
         sd=SNAKEMAKE_DIR,
     shell:"""
@@ -409,7 +490,7 @@ rule FindTRZygosity:
         trZyg=expand("{gapdir}/hap{hap}/tr_net.tab.zyg",gapdir=gapdir,hap=haps),
         trZygBed=expand("{gapdir}/hap{hap}/tr_net.tab.zyg.bed",gapdir=gapdir,hap=haps),        
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         tr=SNAKEMAKE_DIR+"/../regions/tandem_repeats_strs_slop",
         sd=SNAKEMAKE_DIR,
     shell:"""
@@ -425,7 +506,7 @@ rule AnnotateTRZygosity:
     output:
         filtTR=gapdir+"/hap{hap}/gaps.recalled.noclust.tr_bed"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         tr=SNAKEMAKE_DIR+"/../regions/tandem_repeats_strs_slop.bed",
         sd=SNAKEMAKE_DIR,
     shell:"""
@@ -449,7 +530,7 @@ rule SplitGapsByTR:
         homtr=gapdir+"/hap{hap}/gaps.recalled.noclust.homtr",
         hettr=gapdir+"/hap{hap}/gaps.recalled.noclust.hettr",        
     params:
-        sge_opts=config["grid_manycore"],
+        grid_opts=config["grid_manycore"],
         sd=SNAKEMAKE_DIR
     shell:"""
 paste {input.haps} {input.filtTR} | bioawk -c hdr '{{ if (NR == 1 || $trHap == ".") print;}}' > {output.notr}
@@ -457,7 +538,18 @@ paste {input.haps} {input.filtTR} | bioawk -c hdr '{{ if (NR == 1 || $trHap == "
 paste {input.haps} {input.filtTR} | bioawk -c hdr '{{ if (NR == 1 || $trHap == "HET") print;}}' > {output.hettr}
 """
 
-
+rule FilterGaps:
+    input:
+        comb=gapdir+"/diploid/sv_calls.bed",
+    output:
+        filt=gapdir+"/diploid/sv_calls.bed.filt",        
+    params:
+        grid_opts=config["grid_small"],
+        cov=int(config["depth"])*0.6
+    shell:"""
+cat {input.comb} | bioawk -c hdr '{{ if (NR==1 || $nAlt > 3 || ($svType == "deletion" && $coverage < {params.cov})) {{ print;}} }}' > {output.filt}
+"""
+ 
 
 rule MergeGaps:
     input:
@@ -468,23 +560,23 @@ rule MergeGaps:
     output:
         comb=gapdir+"/diploid/sv_calls.bed"
     params:
-        sge_opts=config["grid_manycore"],
+        grid_opts=config["grid_manycore"],
         sd=SNAKEMAKE_DIR
     shell:"""
 # First combine the calls outside of tandem repeat regions. This is with low threshold for merging.
-{params.sd}/../sv/utils/MergeHaplotypesByOperation.sh {input.notr} {output.comb}.not_tr "svType svLen svSeq qName qStart qEnd region nAlt nRef" 0.1
+{params.sd}/../sv/utils/MergeHaplotypesByOperation.sh {input.notr} {output.comb}.not_tr "svType svLen svSeq qName qStart qEnd region nAlt nRef coverage" 0.1
 
 #
 # Next combine inside tandem repeat regions that are expected
 # to be homozygous. Just one haplotype should be selected here. 
 #
 cat {input.homtr[0]} | awk '{{ if (NR==1) {{ print $0"\\thap";}} else {{ print $0"\\tHOM";}} }}' | tr " " "\t" | \
- {params.sd}/../sv/utils/Select.py --cols \#chrom tStart tEnd hap svType svLen svSeq qName qStart qEnd region nAlt nRef  --out {output.comb}.homtr-0
+ {params.sd}/../sv/utils/Select.py --cols \#chrom tStart tEnd hap svType svLen svSeq qName qStart qEnd region nAlt nRef coverage --out {output.comb}.homtr-0
 
 #
 # Finally merge the heterozygous regions, with a moderate threshold on difference.
 #
-{params.sd}/../sv/utils/MergeHaplotypesByOperation.sh {input.hettr} {output.comb}.hettr "svType svLen svSeq qName qStart qEnd region nAlt nRef" 0.5
+{params.sd}/../sv/utils/MergeHaplotypesByOperation.sh {input.hettr} {output.comb}.hettr "svType svLen svSeq qName qStart qEnd region nAlt nRef coverage" 0.5
 
 # Now combine all calls
 head -1 {output.comb}.not_tr > {output.comb}.pre-filter
@@ -505,7 +597,7 @@ rule MakeBB:
     params:
         ref=config["ref"],
         sd=SNAKEMAKE_DIR,
-        sge_opts=config["grid_small"]
+        grid_opts=config["grid_small"]
     shell:"""
 cat {input.gaps} | bioawk -c hdr '{{ if (NR==1 || ($svType == "deletion" && $nAlt > 3) ) print;}}' | {params.sd}/../sv/utils/FixCoordinates.py /dev/stdin {input}.del {params.ref}.fai
 cat {input.gaps} | bioawk -c hdr '{{ if (NR==1 || ($svType == "insertion" && $nAlt > 3) ) print;}}' | {params.sd}/../sv/utils/FixCoordinates.py /dev/stdin {input}.ins {params.ref}.fai
@@ -521,7 +613,7 @@ rule SortRecalledRegions:
     output:
         rsorted="SVQC/hap{hap}/regions.recalled.ref.sorted",
     params:
-        sge_opts=config["grid_small"]
+        grid_opts=config["grid_small"]
     shell:
         "bedtools sort -i {input.recalled} > {output.rsorted}"
 
@@ -534,7 +626,7 @@ rule CollectRetainedIndels:
     output:
         retainedIndels="SVQC/hap{hap}/indels.retained.bed",
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
     shell:
         "bedtools intersect -v -a {input.stitchIndels} -b {input.recalledRegions} > {output.retainedIndels} "
 
@@ -546,7 +638,7 @@ rule SortGaps:
     output:
         svqc="SVQC/hap{hap}/gaps.sorted"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
     shell:"""
 mkdir -p SVQC/hap{wildcards.hap}
 nf=`head -1 {input.stitching} | awk '{{ print NF;}}'`
@@ -560,7 +652,7 @@ rule CountGapClusters:
     output:
         orig_clusters="SVQC/hap{hap}/gaps.sorted.window_clusters"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         ref=config["ref"],        
         sd=SNAKEMAKE_DIR,        
     shell:"""
@@ -575,7 +667,7 @@ rule ConvertIndelBedToVCF:
     output:
         mergedRetainedVCF="SVQC/hap{hap}/indels.svqc.raw.vcf"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         ref=config["ref"],
         sample=config["sample"]
     shell:"""
@@ -588,7 +680,7 @@ rule NormIndelVCF:
     output:
         normVCF="SVQC/hap{hap}/indels.svqc.norm.vcf"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         ref=config["ref"],
     shell:"""
 vt normalize -r {params.ref} -o {output.normVCF} {input.rawVCF}
@@ -600,7 +692,7 @@ rule NormIndelVCFToBed:
     output:
         bed="SVQC/hap{hap}/indels.svqc.norm.bed"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         ref=config["ref"],
     shell:"""
 {SNAKEMAKE_DIR}/../sv/utils/variants_vcf_to_bed.py --vcf {input.vcf} --out {output.bed}
@@ -612,7 +704,7 @@ rule SplitNormBed:
     output:
         opbed="SVQC/hap{hap}/indels.svqc.norm.{op}.bed"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         ref=config["ref"],
     shell:"""
 egrep "^#|{wildcards.op}" {input.allbed} > {output.opbed}
@@ -624,7 +716,7 @@ rule LocalAssemblyBasedIndels:
     output:
         indels="SVQC/hap{hap}/indels_local.bed"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SNAKEMAKE_DIR,
         ref=config["ref"],
     shell:"""
@@ -638,7 +730,7 @@ rule SplitSupport:
     output:
         indels_op=expand("SVQC/hap{{hap}}/indels_local.{op}.bed",op=ops)
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SNAKEMAKE_DIR,
         ref=config["ref"],
     shell:"""
@@ -654,7 +746,7 @@ rule AddSupport:
     output:
         opsupport="SVQC/hap{hap}/indels.svqc.norm.{op}.bed.support",
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SNAKEMAKE_DIR,
         ref=config["ref"],
     shell:"""
@@ -673,7 +765,7 @@ rule MergeSupport:
     output:
        mergedopsupport="SVQC/hap{hap}/indels.svqc.norm.bed.support",
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
     shell:"""
 head -1 {input.opsupport[0]} > {output.mergedopsupport}
 cat {input.opsupport} | grep -v "^#" | bedtools sort >> {output.mergedopsupport}
@@ -685,7 +777,7 @@ rule HapIndelBedToDiploidBedOp:
     output:
         dipOpIndels="SVQC/diploid/indels.{op}.bed"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SNAKEMAKE_DIR
     shell:"""
 {params.sd}/../indels/MergeHaplotypes.sh {input.indels} {output.dipOpIndels}
@@ -698,7 +790,7 @@ rule HapIndelBedToDiploidBed:
     output:
         dipIndels="SVQC/diploid/indels.bed"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SNAKEMAKE_DIR
     shell:"""
 head -1 {input.dipopindels[0]} > {output.dipIndels}
@@ -711,7 +803,7 @@ rule IndelBedToVCF:
     output:
         vcf=expand("SVQC/diploid/{sample}.indels.vcf",sample=config["sample"])
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SNAKEMAKE_DIR,
         ref=config["ref"],
         sample=config["sample"]
@@ -730,7 +822,7 @@ rule LiftTRClusters:
         trClusterLifted="SVQC/hap{hap}/tr_clusters.bed.to_asm",
     params:
         clusterSize=config["tr_cluster_size"],
-        sge_opts=config["grid_manycore"],
+        grid_opts=config["grid_manycore"],
         contigSam=lambda wildcards: contigs[wildcards.hap] + ".sam",
         sd=SNAKEMAKE_DIR
     shell:"""
@@ -744,10 +836,11 @@ rule MakeTRClusterFasta:
         trClusterFasta="SVQC/hap{hap}/tr_clusters.bed.fasta",
     params:
         clusterSize=config["tr_cluster_size"],
-        sge_opts=config["grid_manycore"],
+        grid_opts=config["grid_manycore"],
         contigs=lambda wildcards: contigs[wildcards.hap]
     shell:"""
-samtools faidx {params.contigs} `cat {input.trClusterLifted} | awk '{{ print $1":"$2"-"$3;}}' | tr "\\n" " "` > {output.trClusterFasta}  
+ctg=`head -1 {params.contigs} | cut -f 1 | tr -d ">"`
+samtools faidx {params.contigs} `cat {input.trClusterLifted} | awk -v ctg=$ctg '{{ if ($1 != "NA") {{ print $1":"$2"-"$3;}} else {{ print ctg":1-1";}} }}' | tr "\\n" " "` > {output.trClusterFasta}  
 """
     
     
@@ -757,7 +850,7 @@ rule MakeSVOpBins:
     output:
         separateBins=expand("SVQC/bins.{op}.bed", op=ops)
     params:
-        sge_opts=config["grid_manycore"],
+        grid_opts=config["grid_manycore"],
         ref=config["ref"],
         prindel="/net/eichler/vol5/home/mchaisso/projects/mcst/prindel",
         covWalks=SNAKEMAKE_DIR+"/../sv/utils/CovBinsWalks.py"
@@ -773,7 +866,7 @@ rule MakeSVOpBins:
 #    output:
 #         calls="{dir}/diploid/sv_calls.bed"
 #    params:
-#        sge_opts="-cwd -pe serial 8 -l mfree=2G -l h_rt=04:00:00 -l disk_free=4G",
+#        grid_opts="-cwd -pe serial 8 -l mfree=2G -l h_rt=04:00:00 -l disk_free=4G",
 #        sd=SNAKEMAKE_DIR
 #    shell:"""
 #
@@ -787,7 +880,7 @@ rule FillInRegions:
     output:
         fillInRegion="fill-in/hap{hap}/region.bed"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SNAKEMAKE_DIR
     shell:"""
 bedtools subtract -a {params.sd}/../regions/Regions.Called.bed -b {input.contigBed} > {output.fillInRegion}
@@ -801,7 +894,7 @@ rule MakeFillIn:
     output:
         fillInHap="fill-in/hap{hap}/gaps.all.bed"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         ref=config["ref"],
         sd=SNAKEMAKE_DIR
 #
@@ -826,7 +919,7 @@ rule KeepNotCoveredFillIn:
     output:
         fillIn="fill-in/hap{hap}/gaps.all_regions.bed"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SNAKEMAKE_DIR
     shell:"""
 bedtools intersect -header -v -a {input.fillInHap} -b {input.contigBed} > {output.fillIn}
@@ -838,7 +931,7 @@ rule RemoveHeterochromatic:
     output:
         fillIn="fill-in/hap{hap}/gaps.bed"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SNAKEMAKE_DIR
     shell:"""
 bedtools intersect -header -a {input.fillInAll} -b {params.sd}/../regions/Regions.Called.bed -wa -u > {output.fillIn}
@@ -851,7 +944,7 @@ rule FillInIndel:
     output:
         indel="fill-in/hap{hap}/indels.{op}.bed",
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         ref=config["ref"],
         sd=SNAKEMAKE_DIR        
     shell:"""
@@ -871,12 +964,12 @@ rule FillInSupport:
     output:
         fillInCov="fill-in/hap{hap}/gaps.bed.cov"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         ref=config["ref"],
         bams=config["bams"],
         sd=SNAKEMAKE_DIR
     shell:"""
-{params.sd}/../sv/utils/SpliceVariantsAndCoverageValidate.py --blasr {params.sd}/../blasr/alignment/bin/blasr --gaps {input.fillIn} --ref {params.ref} --reads {params.bams} --window 250 --flank 1000 --out {output.fillInCov} --nproc 8 --blasr {params.sd}/../blasr/alignment/bin/blasr 
+{params.sd}/../sv/utils/SpliceVariantsAndCoverageValidate.py --blasr {params.sd}/../blasr/alignment/bin/blasr --gaps {input.fillIn} --ref {params.ref} --reads {params.bams} --window 250 --flank 1000 --out {output.fillInCov} --nproc 1 --blasr {params.sd}/../blasr/alignment/bin/blasr 
 """
 
 
@@ -884,14 +977,16 @@ rule FillInSupport:
 rule FilteredFillIn:
     input:
         fillInCov="fill-in/hap{hap}/gaps.bed.cov",
+        fillInReadCov="fill-in/hap{hap}/gaps.bed.readcov",
         fillIn="fill-in/hap{hap}/gaps.bed"
     output:
         fillInFilt="fill-in/hap{hap}/gaps.bed.support"
     params:
-        sge_opts=config["grid_small"],
-        sd=SNAKEMAKE_DIR
+        grid_opts=config["grid_small"],
+        sd=SNAKEMAKE_DIR,
+        cov=int(config["depth"])*0.6
     shell:"""
-paste {input.fillIn} {input.fillInCov} | bioawk -c hdr '{{ if (substr($0,0,1) == "#" || $nAlt > 3) print;}}' > {output.fillInFilt}
+paste {input.fillIn} {input.fillInCov} {input.fillInReadCov} | bioawk -c hdr '{{ if (substr($0,0,1) == "#" || $nAlt > 3 || ($svType == "deletion" && $coverage < {params.cov}) ) print;}}' > {output.fillInFilt}
 """
 
 rule FillInTRClusters:
@@ -900,7 +995,7 @@ rule FillInTRClusters:
     output:
         fillInFiltClusters="fill-in/hap{hap}/tr_clusters.bed"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SNAKEMAKE_DIR,
         cluster_count=config["tr_cluster_size"]
     shell:"""
@@ -920,7 +1015,7 @@ rule RemoveClusteredSVsFromFilt:
     output:
         fillInFilt="fill-in/hap{hap}/gaps.bed.support.noclust",
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SNAKEMAKE_DIR,
     shell:"""
 cat {input.fillInFilt} | \
@@ -935,16 +1030,43 @@ rule FilteredDiploid:
     output:
         fillInDiploid="fill-in/diploid/sv_calls.bed.support"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         sd=SNAKEMAKE_DIR
     shell:"""
-{params.sd}/../sv/utils/MergeHaplotypesByOperation.sh {input.fillInFilt} {output.fillInDiploid}.pre "svType svLen svSeq qName qStart qEnd region nAlt nRef"
+{params.sd}/../sv/utils/MergeHaplotypesByOperation.sh {input.fillInFilt} {output.fillInDiploid}.pre "svType svLen svSeq qName qStart qEnd region nAlt nRef coverage"
 
 {params.sd}/../sv/utils/RemoveDelConflicts.sh {output.fillInDiploid}.pre {output.fillInDiploid}
 rm -f {output.fillInDiploid}.pre
 
 """
     
+rule MakeFiltMergedBed:
+    input:
+        fillInFilt="fill-in/diploid/sv_calls.bed.support",
+        filtSVCalls="SVQC/diploid/sv_calls.bed.filt",
+    output:
+        filtMerged="merged/filt_sv_calls.bed",
+    params:
+        grid_opts=config["grid_small"],
+    shell:"""
+mkdir -p merged
+# Make sure fill in does not overlap with stitching.
+bedtools intersect -header -v -a {input.fillInFilt} -b {input.filtSVCalls} > merged/fill-in.bed.filt
+
+# Prepare name
+head -1 merged/fill-in.bed.filt | awk '{{ print $0"\\tsource";}}' > merged/fill-in.bed.filt.src
+tail -n +2 merged/fill-in.bed.filt | awk '{{ print $0"\\tlocal";}}' >>  merged/fill-in.bed.filt.src
+
+head -1 {input.filtSVCalls} | awk '{{ print $0"\\tsource";}}' > merged/svqc.bed.src.filt
+tail -n +2 {input.filtSVCalls} |  awk '{{ print $0"\\tstitching";}}' >> merged/svqc.bed.src.filt
+
+ {SNAKEMAKE_DIR}/../sv/utils/Select.py --table merged/fill-in.bed.filt.src  --out merged/fill-in.bed.filt.subset --cols `head -1 {input.filtSVCalls}` source
+ {SNAKEMAKE_DIR}/../sv/utils/MergeFiles.py --files merged/svqc.bed.src.filt merged/fill-in.bed.filt.src | bedtools sort -header > {output.filtMerged}
+    
+"""
+ 
+
+
 
 rule MakeMergedBed:
     input:
@@ -953,7 +1075,7 @@ rule MakeMergedBed:
     output:
         mergedBed="merged/sv_calls.bed"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
     shell:"""
 mkdir -p merged
 bedtools intersect -header -v -a {input.fillinBed} -b {input.svqcBed} > merged/fill-in.bed
@@ -969,7 +1091,18 @@ tail -n +2 {input.svqcBed} |  awk '{{ print $0"\\tstitching";}}' >> merged/svqc.
 """
 #    .format(SNAKEMAKE_DIR, SNAKEMAKE_DIR)
 
-
+    
+rule MakeMergedFiltVCF:
+    input:
+        mergedBed="merged/filt_sv_calls.bed",
+    output:
+        mergedVCF="merged/filt_sv_calls.vcf",
+    params:
+        grid_opts=config["grid_small"],
+        ref=config["ref"], 
+        sample=config["sample"]
+    shell:"""
+{SNAKEMAKE_DIR}/../sv/utils/variants_bed_to_vcf.py --bed {input.mergedBed} --ref {params.ref} --sample {params.sample} --type sv --seq --vcf /dev/stdout --fields NALT nAlt NREF nRef SRC source | bedtools sort -header > {output.mergedVCF}"""
     
 rule MakeMergedVCF:
     input:
@@ -977,7 +1110,7 @@ rule MakeMergedVCF:
     output:
         mergedVCF="merged/sv_calls.vcf"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
         ref=config["ref"], 
         sample=config["sample"]
     shell:"""
@@ -990,7 +1123,7 @@ rule MakeSampleVCF:
     output:
         sampleVCF="merged/"+config["sample"]+".sv_calls.vcf.gz"
     params:
-        sge_opts=config["grid_small"],
+        grid_opts=config["grid_small"],
     shell:
         "bgzip -c {input.mergedVCF} > {output.sampleVCF}; tabix {output.sampleVCF}"
         

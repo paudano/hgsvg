@@ -29,7 +29,6 @@ callFile = open(args.calls)
 readsFofn = open(args.fofn)
 blines = readsFofn.readlines()
 bamFiles = [pysam.AlignmentFile(bline.rstrip(), 'rb') for bline in blines]
-print blines
 bamFileIndex = {}
 
 

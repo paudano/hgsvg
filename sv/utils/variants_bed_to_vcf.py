@@ -259,6 +259,7 @@ def convert_bed_to_vcf(bed_filename, reference_filename, vcf_filename, sample, v
         vcf.write('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">' + "\n")
         if args.info is not None:
             vcf.write("\n".join(args.info)+"\n")
+        vcf.flush()
         simple_calls.to_csv(vcf, sep="\t", index=False)
 
 

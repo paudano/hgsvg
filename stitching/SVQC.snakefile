@@ -382,6 +382,10 @@ rule FilterRecalledGaps:
         grid_opts=config["grid_small"],
         inversions=config["inversions"],
     shell:"""
+if [ ! -e {params.inversions} ]; then
+touch {params.inversions}
+fi
+        
 nf=`paste {input.gaps} {input.readcov} | head -1 | awk '{{ print NF;}}'`
 paste {input.gaps} {input.readcov} | bedtools intersect -header -f 0.9 -v -a stdin -b {params.inversions}  | \
 bedtools groupby -header -g 1-5 -c 1 -o first -full | cut -f 1-$nf > {output.filt}
@@ -453,11 +457,11 @@ rule SeparateTRClusterSVCalls:
     shell:"""
 cat {input.filt} | {params.sd}/../sv/utils/ToPoint.sh | \
  bedtools intersect -u -header -f 0.9 -a stdin -b {input.trClusters} | \
- {params.sd}/../sv/utils/FromPoint.sh | tr " " "\t" > {output.gapsClust}
+ {params.sd}/../sv/utils/FromPoint.sh | tr " " "\\t" > {output.gapsClust}
             
 cat {input.filt} | {params.sd}/../sv/utils/ToPoint.sh | \
  bedtools intersect -v -header -f 0.9 -a stdin -b {input.trClusters} | \
- {params.sd}/../sv/utils/FromPoint.sh | tr " " "\t" > {output.gapsNoClust}
+ {params.sd}/../sv/utils/FromPoint.sh | tr " " "\\t" > {output.gapsNoClust}
 """        
     
 rule AnnotateSVInTR:
@@ -570,7 +574,7 @@ rule MergeGaps:
 # Next combine inside tandem repeat regions that are expected
 # to be homozygous. Just one haplotype should be selected here. 
 #
-cat {input.homtr[0]} | awk '{{ if (NR==1) {{ print $0"\\thap";}} else {{ print $0"\\tHOM";}} }}' | tr " " "\t" | \
+        cat {input.homtr[0]} | awk '{{ if (NR==1) {{ print $0"\\thap";}} else {{ print $0"\\tHOM";}} }}' | tr " " "\\t" | \
  {params.sd}/../sv/utils/Select.py --cols \#chrom tStart tEnd hap svType svLen svSeq qName qStart qEnd region nAlt nRef coverage --out {output.comb}.homtr-0
 
 #
@@ -707,7 +711,7 @@ rule SplitNormBed:
         grid_opts=config["grid_small"],
         ref=config["ref"],
     shell:"""
-egrep "^#|{wildcards.op}" {input.allbed} > {output.opbed}
+egrep "^#|{wildcards.op}" {input.allbed} > {output.opbed} || true
 """
 
 rule LocalAssemblyBasedIndels:

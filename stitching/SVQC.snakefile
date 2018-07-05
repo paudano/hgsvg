@@ -305,6 +305,26 @@ rule MergeRetainedAndRecalledIndels:
     shell:"""
 head -1 {input.indelBed} | cut -f 1-6 > {output.mergedRetained}
 cat {input.indelBed} {input.retainedIndels} | cut -f 1-6 | grep -v "^#" | bedtools sort >> {output.mergedRetained}
+
+nIndels=`wc -l {output.mergedRetained} | awk '{{ print $1;}}'`
+if [ $nRecalled -eq 1 ]; then
+    echo "ERROR. There were no indels detected in {output.mergedRetained}. There are several ways "
+    echo " this can happen: "
+    echo " (1) Your data does not contain indels. This can happen on small genomes with"
+    echo "     low coverage (< 40X)."
+    echo " (2) Your configuration is not correct. Check that 'config.sh' sources "
+    echo "appropriate files to configure your python environment, and that the following"
+    echo "software is installed: "
+    echo " bedtools >= 2.17 "
+    echo " samtools >= 1.7"
+    echo " bioawk >= 20110810"
+    echo " canu >= 1.5 "
+    echo " ucsc genome browser tools "
+    echo " vt >= 0.57"
+    exit 1
+fi    
+
+    
 """
     
 rule SplicedPBSupport:
@@ -356,6 +376,25 @@ head -1 {params.gapdir}/hap{wildcards.hap}/split/gaps.gaps_recalled_support.0 | 
     tr -d "#" | awk '{{ print "#"$0; }}'> {output.recalled}
 cat {input.gaps} | grep -v "^#" | bedtools sort >> {output.recalled}
 cat {input.refRegions} > {output.recalledRegions}
+
+nRecalled=`wc -l {output.recalled} | awk '{{ print $1;}}'`
+if [ $nRecalled -eq 1 ]; then
+    echo "ERROR. There were no SVs detected in {output.recalled}. There are several ways "
+    echo " this can happen: "
+    echo " (1) Your data does not contain SVs. This can happen on small genomes with"
+    echo "     low coverage (< 40X)."
+    echo " (2) Your configuration is not correct. Check that 'config.sh' sources "
+    echo "appropriate files to configure your python environment, and that the following"
+    echo "software is installed: "
+    echo " bedtools >= 2.17 "
+    echo " samtools >= 1.7"
+    echo " bioawk >= 20110810"
+    echo " canu >= 1.5 "
+    echo " ucsc genome browser tools "
+    echo " vt >= 0.57"
+    exit 1
+fi    
+    
 """
 
 

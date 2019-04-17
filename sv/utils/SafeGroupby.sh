@@ -9,7 +9,7 @@ while read line; do
 		c=$(expr $c + 1);
 done
 if [ ${#lines[@]} -gt 1 ]; then 
-		echo -e ${lines[*]} | sed "s/^ //g" |  sed '/^$/d'  | eval $1
+		echo -e ${lines[*]} | sed 's/^ //g' |  sed '/^$/d'  | eval $1
 else
-		echo -e ${lines[*]} | sed "s/^ //g" |  sed '/^$/d' 
+		echo -e ${lines[*]} | sed 's/^ //g' |  sed '/^$/d' 
 fi

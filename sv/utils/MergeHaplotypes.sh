@@ -27,7 +27,7 @@ if [ $nh1 -gt 1 ]  && [ $nh2 -gt 1 ]; then
   bioawk -c hdr '{ if ($chrom_2 != ".") print; }' | \
 	tr -d "#" | \
   $SRC_DIR/Select.py --cols chrom tStart tEnd   $additional | \
-	$SRC_DIR/SafeGroupby.sh "-g 1-5 -header -c 3 -o first -full"  | \
+	$SRC_DIR/SafeGroupby.sh "bedtools groupby -header -g 1-5 -c 3 -o first -full"  | \
 	awk 'BEGIN{OFS="\t";} { if (NR> 1) {NF-=1}; print; }' >  $out.0.r.bed
 else
 		cat $h1 | tr -d "#" | $SRC_DIR/Select.py --cols chrom tStart tEnd  $additional 		 > $out.0.r.bed
@@ -60,7 +60,7 @@ nHap=`wc -l $h1 | awk '{ print $1;}'`
 if [ $nHom -gt 1 ] && [ $nHom -lt $nHap ]; then
 nf=`head -1 $h1 | awk '{ print NF;}'`
   bedtools intersect -v -a $h1 -b $out.0.r.bed  -header -r -f 1.0 | \
-		 $SRC_DIR/SafeGroupby.sh "	bedtools groupby -header -g 1-3 -c 1 -o first -full " | cut -f 1-$nf > $out.h0.bed
+		 $SRC_DIR/SafeGroupby.sh "bedtools groupby -header -g 1-3 -c 1 -o first -full " | cut -f 1-$nf > $out.h0.bed
 else
 		head -1 $h1 > $out.h0.bed
 fi		

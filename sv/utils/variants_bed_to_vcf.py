@@ -71,7 +71,7 @@ def ParseSVLen(val):
         except:
             import pdb
             pdb.set_trace()
-            print val
+            print(val)
             
         return abs(int(val))
     
@@ -88,7 +88,7 @@ def GetSVLen(row):
     if retval is None or retval == "":
         import pdb
         pdb.set_trace()
-        print row["svType"]
+        print(row["svType"])
     return retval
 
 def GetRefSeq(row, genome, oneBase=False):

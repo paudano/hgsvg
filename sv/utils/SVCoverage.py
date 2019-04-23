@@ -126,7 +126,7 @@ def ProcessLine(line):
                 else:
                     return 0
             else:
-                print "ERROR WITH READ DEPTH"
+                print("ERROR WITH READ DEPTH")
                 sys.exit(1)
             
     avg = 0

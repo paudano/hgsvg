@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
 import pysam
 import tempfile
@@ -33,7 +33,7 @@ args = ap.parse_args()
 
 if args.tmpdir is None:
     if "TMPDIR" not in os.environ or os.environ["TMPDIR"] == "":
-        print "ERROR. The TEMPDIR variable must be set or --tmpdir specified on as a command  argument"
+        print("ERROR. The TEMPDIR variable must be set or --tmpdir specified on as a command  argument")
         sys.exit(1)
     else:
         args.tmpdir = os.environ["TMPDIR"]
@@ -215,9 +215,9 @@ if nGaps <= args.ngaps or args.gapLines is None:
 
             gap="\t".join(printGapLineVals)
             if args.ngaps >= args.ngmlr:
-                print gap + "\t" + method
+                print(gap + "\t" + method)
             else:
-                print gap + "\t" + method
+                print(gap + "\t" + method)
                     
 
 else:
@@ -246,6 +246,6 @@ else:
                 else:
                     outputVals.append("NA")
             
-            print "\t".join(outputVals) + "\tgenome-align"
+            print("\t".join(outputVals) + "\tgenome-align")
 
 sys.stderr.write("Done with " + args.refRegion + "\n")

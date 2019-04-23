@@ -45,7 +45,7 @@ ap.add_argument("--h2", help="Print h1 gaps here.", default=None)
 
 args = ap.parse_args()
 
-genome = file(args.genome, 'r')
+genome = open(args.genome, 'r')
 handle = open(args.genome, "r")
 
 def GetQueryLength(lens, ops):
@@ -201,10 +201,10 @@ for samFileName in args.sam:
                 srcStart = int(coordMatchGroups[1])
                 srcEnd   = int(coordMatchGroups[2])
                 if (srcChrom != aln.tName):
-                    print "off target chromosome: " + srcChrom + " " + aln.tName
+                    print("off target chromosome: " + srcChrom + " " + aln.tName)
                     continue
                 if (((srcStart >= aln.tStart and srcStart < aln.tEnd) or (srcEnd >= aln.tStart and srcEnd < aln.tEnd) or (srcStart < aln.tStart and srcEnd > aln.tEnd )) == False): 
-                    print "no overlap " + srcChrom + " " + str(srcStart) + " " + str(srcEnd) + " alignment: " + str(aln.tStart) + " "+ str(aln.tEnd)
+                    print("no overlap " + srcChrom + " " + str(srcStart) + " " + str(srcEnd) + " alignment: " + str(aln.tStart) + " "+ str(aln.tEnd))
                     continue
 
         if (aln.mapqv < args.minq):
@@ -412,7 +412,7 @@ for samFileName in args.sam:
 #                        print aln.title
                     for mp in range(0,len(targetSeq)):
                         if (mp >= len(querySeq) or mp >= len(targetSeq)):
-                            print "ERROR with seq " + aln.title
+                            print("ERROR with seq " + aln.title)
                             continue
                             
                         if (querySeq[mp].upper() != targetSeq[mp].upper() and targetSeq[mp].upper() != 'N' and querySeq[mp].upper() != 'N'):
@@ -434,7 +434,7 @@ for samFileName in args.sam:
                     gapSeq = aln.seq[qPos:qPos+oplen]
                     tsd = "notsd"
                     if (len(gapSeq) == 0):
-                        print "ERROR, gap seq is of zero length"
+                        print("ERROR, gap seq is of zero length")
                     if (args.tsd):
                         # try and find the target site duplications, this may be on either side of the alignemnt
                         tsdSuffix = gapSeq[-args.tsd:]
@@ -481,7 +481,7 @@ for samFileName in args.sam:
                         
                     if (doPrint):
                         if (tsd == ""):
-                            print line
+                            print(line)
                         if (h1File is not None or h2File is not None):
                             v = line.split()
                             for kvp in v:
@@ -518,7 +518,7 @@ for samFileName in args.sam:
                     foundGap = True                    
                     chrName = aln.tName
                     if (tPos > fai[chrName][0]):
-                        print "ERROR! tpos is past the genome end." + str(tPos) + " " + str(fai[chrName][0])
+                        print("ERROR! tpos is past the genome end." + str(tPos) + " " + str(fai[chrName][0]))
                     delStart = max(tPos - args.context, 0)
                     delEnd   = min(tPos + args.context + oplen, fai[chrName][0])
                     if (delEnd < delStart):
@@ -564,7 +564,7 @@ for samFileName in args.sam:
                                         outFile = h1File
                                     else:
                                         outFile = h2File
-                                    print "SET OUTFILE \n\n\n"
+                                    print("SET OUTFILE \n\n\n")
  
                         outFile.write("{}\t{}\t{}\t{}\t{}\t{}\tno_tsd\t{}\t{}\t{}".format(chrName, tPos, tPos + oplen, "deletion", oplen, delSeq, aln.title, qPos, qPos))
                         if (args.context > 0):

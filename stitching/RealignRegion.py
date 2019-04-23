@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
 import pysam
 import tempfile
@@ -24,7 +24,7 @@ args = ap.parse_args()
 
 if args.tmpdir is None:
     if "TMPDIR" not in os.environ or os.environ["TMPDIR"] == "":
-        print "ERROR. The TEMPDIR variable must be set or --tmpdir specified on as a command  argument"
+        print("ERROR. The TEMPDIR variable must be set or --tmpdir specified on as a command  argument")
         sys.exit(1)
     else:
         args.tmpdir = os.environ["TMPDIR"]
@@ -95,7 +95,7 @@ for aln in samFile.fetch():
     # negative delta is deletion, positive is insertion
 
 
-#    print (aEnd, aStart, rEnd , rStart)
+#    print((aEnd, aStart, rEnd , rStart))
     verified=False
     nMapped=0
     if aln.cigartuples is None:
@@ -117,4 +117,4 @@ for aln in samFile.fetch():
     sys.stderr.write("Index {} mapped {}\n".format(args.index, nMapped))
 command = "rm -f {} {} {}".format(aFile.name, rFile.name, sFile.name)
 subprocess.call(command.split())
-print args.asmRegion + "\t" + str(verified) + "\t{}\t{:2.2f}".format(abs(delta), minRatio) + "\t" + str(nMapped) + "\t" + str(len(aSeq)) + "\t" + str(len(rSeq)) + "\t" + str(args.index)
+print(args.asmRegion + "\t" + str(verified) + "\t{}\t{:2.2f}".format(abs(delta), minRatio) + "\t" + str(nMapped) + "\t" + str(len(aSeq)) + "\t" + str(len(rSeq)) + "\t" + str(args.index))

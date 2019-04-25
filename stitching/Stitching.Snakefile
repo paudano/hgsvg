@@ -1,5 +1,6 @@
 import os
 import tempfile
+import subprocess
 
 #
 # Init
@@ -335,9 +336,45 @@ rule MakeAsmAln:
         asmSam="contigs.{hap}.fasta.sam"
     params:
         grid_opts=config["grid_small"],
-    shell:
-        """samtools view -H {input.aln} > {output.asmSam}; """
-        """grep -h -v \"^@\" {input.asmContigs} | grep -Ev '^$' >> {output.asmSam}"""
+    run:
+
+        with open(output.asmSam, 'w') as out_file:
+
+            # Fetch and write header
+            samtools_stdout = subprocess.run(
+                [
+                    '/net/eichler/vol27/projects/structural_variation/nobackups/tools/phasedsv/201904/dep/build/envs/tools/bin/samtools',
+                    'view',
+                    '-H',
+                    'alignments.h0.bam'
+                ],
+                stdout=subprocess.PIPE
+            ).stdout.decode()
+
+            for line in samtools_stdout.split('\n'):
+                line = line.strip()
+
+                if not line:
+                    continue
+
+                out_file.write(line)
+                out_file.write('\n')
+
+            # Iterate records and write
+            for asm_sam_file_name in input.asmContigs:
+                with open(asm_sam_file_name, 'r') as in_file:
+                    for line in in_file:
+                        line = line.strip()
+
+                        if not line:
+                            continue
+
+                        if line.startswith('@'):
+                            continue
+
+                        out_file.write(line)
+                        out_file.write('\n')
+
 
 rule MakeContigAsmAln:
     input:
@@ -350,7 +387,7 @@ rule MakeContigAsmAln:
         sd=SD,
         td=TMPDIR        
     shell:
-        """{params.sd}/MapContigs.py --contigs {input.asmFasta} --ref {params.ref} --tmpdir $TMPDIR --blasr {params.sd}/..//blasr/alignment/bin/blasr --out {output.asmSam} --nproc 4"""
+        """{params.sd}/MapContigs.py --contigs {input.asmFasta} --ref {params.ref} --tmpdir $TMPDIR --blasr {params.sd}/../../dep/bin/blasrmc --out {output.asmSam} --nproc 4"""
 
 rule MakeChrAsmBed:
     input:
@@ -461,7 +498,7 @@ rule MakeSplitOverlaps:
             """--out {output.splitAsmOverlaps} """
             """--nproc 12 """
             """--tmpdir $TMPDIR """
-            """--blasr {params.sd}/../blasr/alignment/bin/blasr """
+            """--blasr {params.sd}/../../dep/bin/blasrmc """
             """--path {params.sd}"""
 
 rule SplitAsmOverlaps:
@@ -500,7 +537,7 @@ rule MakeAsmBed:
         grid_opts=config["grid_small"]
     shell:
         """samtools view {input.asmBam} | """
-        """{SD}/../mcutils/src/samToBed /dev/stdin --reportIdentity """
+        """{SD}/../../dep/bin/samToBed /dev/stdin --reportIdentity """
         """> {output.asmBed}"""
 
 rule MakeAsmFasta:

@@ -358,18 +358,20 @@ def ExtractSeq(region, seqFile, fai):
     seqLength  = fai[region[0]][2]
     lineLength = fai[region[0]][3]
 
-    startLine, startLinePos = region[1] / seqLength, region[1] % seqLength
-    endLine, endLinePos = region[2] / seqLength, region[2] % seqLength
+    startLine, startLinePos = region[1] // seqLength, region[1] % seqLength
+    endLine, endLinePos = region[2] // seqLength, region[2] % seqLength
 
     startFilePos = chrStart + startLine * lineLength + startLinePos
     endFilePos   = chrStart + endLine * lineLength  + endLinePos
+
     if (startFilePos < 0):
         sys.stderr.write("ERROR! seeking before 0 " + str(startFilePos) + "\n")
         sys.exit(1)
 
     if (endFilePos < startFilePos):
-        sys.stderr.write(region[0] + " " + str(region[1]) + " " + str(region[2]) + "\n")
-        sys.stderr.write("ERORR - end file pos before start\n")
+        sys.stderr.write("Region: " + region[0] + " " + str(region[1]) + " - " + str(region[2]) + "\n")
+        sys.stderr.write("File positions: " + str(startFilePos) + " - " + str(endFilePos) + "\n")
+        sys.stderr.write("ERROR! end file pos before start\n")
         sys.exit(1)
         
     seqFile.seek(startFilePos)
@@ -379,23 +381,24 @@ def ExtractSeq(region, seqFile, fai):
     return seq
 
 def FindBasFile(barcode, zmw, dirname):
-	suffix = ""
-	if (zmw >= 0 and zmw <= 54493):
-	    suffix = ".1.bax.h5"
-	elif (zmw >= 54494 and zmw <= 108987):
-	    suffix = ".2.bax.h5"
-	else:
-	    suffix = ".3.bax.h5"
-	
-	fileName = dirname + "/" + barcode + suffix
-	if (os.path.exists(fileName)):
-	    return fileName
-	else:
-	    fileName = dirname + "/" + barcode + ".bas.h5"
-	    if (os.path.exists(fileName)):
-	        return fileName
-	    else:
-	        return None
+    suffix = ""
+
+    if (zmw >= 0 and zmw <= 54493):
+        suffix = ".1.bax.h5"
+    elif (zmw >= 54494 and zmw <= 108987):
+        suffix = ".2.bax.h5"
+    else:
+        suffix = ".3.bax.h5"
+
+    fileName = dirname + "/" + barcode + suffix
+    if (os.path.exists(fileName)):
+        return fileName
+    else:
+        fileName = dirname + "/" + barcode + ".bas.h5"
+        if (os.path.exists(fileName)):
+            return fileName
+        else:
+            return None
 
 def GetSoftClip(ops, lengths):
     firstS = len(ops)

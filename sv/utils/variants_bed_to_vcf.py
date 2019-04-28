@@ -233,7 +233,12 @@ def convert_bed_to_vcf(bed_filename, reference_filename, vcf_filename, sample, v
             axis=1
         )
 
-    simple_calls = calls[["#chrom", "POS", "call_id", "reference", "alt", "quality", "filter", "info", "format", "genotype"]].rename({"#chrom": "#CHROM", "reference": "REF", "call_id": "ID", "quality": "QUAL", "info": "INFO", "alt": "ALT", "filter": "FILTER", "format":"FORMAT", "genotype": sample}, axis=1)
+    simple_calls = calls.loc[
+        :,
+        ["#chrom", "POS", "call_id", "reference", "alt", "quality", "filter", "info", "format", "genotype"]
+    ]
+
+    simple_calls.columns = ['#CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO', 'FORMAT', sample]
 
     faiFile = open(args.reference + ".fai")
     fai = []

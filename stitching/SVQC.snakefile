@@ -285,7 +285,7 @@ rule RecallGaps:
                 """{params.gapdir}/hap{wildcards.hap}/split/regions.recalled.ref.{wildcards.id} """
                 """--ngmlr {params.ngmlr_cutoff} """
                 """--indels {output.recalled}.indel.bed --indelDir {params.gapdir}/hap{wildcards.hap}/indels """
-                """--blasr {params.sd}/../blasr/alignment/bin/blasr; """
+                """--blasr {params.sd}/../../dep/bin/blasrmc; """
         """ else """
             """echo "Skip recall..."; """
             """cp {input.gaps} {output.recalled}; """
@@ -365,7 +365,7 @@ rule SplicedPBSupport:
 bedtools sort -header -i {input.gaps} > {input.gaps}.tmp
 mv -f {input.gaps}.tmp {input.gaps}
 mkdir -p {params.gapdir}/hap{wildcards.hap};
-{params.sd}/../sv/utils/SpliceVariantsAndCoverageValidate.py --gaps {input.gaps} --ref {params.ref} --reads {params.bams} --window 1000 --flank 2000 --out {output.pbSupport} --nproc 1 --blasr {params.sd}/../blasr/alignment/bin/blasr 
+{params.sd}/../sv/utils/SpliceVariantsAndCoverageValidate.py --gaps {input.gaps} --ref {params.ref} --reads {params.bams} --window 1000 --flank 2000 --out {output.pbSupport} --nproc 1 --blasr {params.sd}/../../dep/bin/blasrmc
 """        
 
 rule AddSplicedPBSupport:
@@ -1038,7 +1038,7 @@ rule FillInSupport:
         sd=SNAKEMAKE_DIR
     shell:
         """{params.sd}/../sv/utils/SpliceVariantsAndCoverageValidate.py """
-            """--blasr {params.sd}/../blasr/alignment/bin/blasr """
+            """--blasr {params.sd}/../../dep/bin/blasrmc """
             """--gaps {input.fillIn} """
             """--ref {params.ref} """
             """--reads {params.bams} """
@@ -1046,7 +1046,7 @@ rule FillInSupport:
             """--flank 1000 """
             """--out {output.fillInCov} """
             """--nproc 1 """
-            """--blasr {params.sd}/../blasr/alignment/bin/blasr"""
+            """--blasr {params.sd}/../../dep/bin/blasrmc"""
 
 
 

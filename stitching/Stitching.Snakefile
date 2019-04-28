@@ -396,9 +396,8 @@ rule MakeChrAsmBed:
         asmBed="contigs.{hap}.fasta.sam.bed"
     params:
         grid_opts=config["grid_small"],
-        hgsvg=SD+ "/.."
     shell:
-        "{params.hgsvg}/mcutils/src/samToBed {input.asmSam}  --reportIdentity | bedtools sort  > {output.asmBed}"
+        "{SD}/../../dep/bin/samToBed {input.asmSam}  --reportIdentity | bedtools sort  > {output.asmBed}"
 
 rule MakeAsmBB:
     input:
